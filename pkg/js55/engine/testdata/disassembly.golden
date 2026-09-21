@@ -1,0 +1,96 @@
+### var x = 1 + 2;
+== script == 0 locaux, 0 paramètres, 1 constantes, self=-1
+  k0   string   "x"
+  0000 int32        1
+  0005 int32        2
+  0010 add         
+  0011 defglobal    0
+  0016 undefined   
+  0017 halt        
+
+### function f(a) { return a * 2; } f(3);
+== script == 0 locaux, 0 paramètres, 2 constantes, self=-1
+  k0   function f
+  k1   string   "f"
+  0000 const        0
+  0005 defglobal    1
+  0010 getglobal    1
+  0015 int32        3
+  0020 call         1
+  0023 halt        
+
+== f == 1 locaux, 1 paramètres, 0 constantes, self=-1
+  0000 getlocal     0
+  0005 int32        2
+  0010 mul         
+  0011 return      
+  0012 undefined   
+  0013 return      
+
+### var s = 0; for (var i = 0; i < 3; i++) { s += i; }
+== script == 1 locaux, 0 paramètres, 2 constantes, self=-1
+  k0   string   "s"
+  k1   string   "i"
+  0000 int32        0
+  0005 defglobal    0
+  0010 int32        0
+  0015 defglobal    1
+  0020 getglobal    1
+  0025 int32        3
+  0030 lt          
+  0031 jumpiffalse  53
+  0036 undefined   
+  0037 setlocal     0
+  0042 pop         
+  0043 getglobal    0
+  0048 getglobal    1
+  0053 add         
+  0054 setglobal    0
+  0059 setlocal     0
+  0064 pop         
+  0065 getglobal    1
+  0070 dup         
+  0071 int32        1
+  0076 add         
+  0077 setglobal    1
+  0082 pop         
+  0083 pop         
+  0084 jump         -69
+  0089 getlocal     0
+  0094 halt        
+
+### var o = {a: 1}; o.a = o.a + 1;
+== script == 0 locaux, 0 paramètres, 2 constantes, self=-1
+  k0   string   "a"
+  k1   string   "o"
+  0000 newobject   
+  0001 dup         
+  0002 int32        1
+  0007 setprop      0
+  0012 pop         
+  0013 defglobal    1
+  0018 getglobal    1
+  0023 getglobal    1
+  0028 getprop      0
+  0033 int32        1
+  0038 add         
+  0039 setprop      0
+  0044 halt        
+
+### var g = (x) => x + 1;
+== script == 0 locaux, 0 paramètres, 2 constantes, self=-1
+  k0   function g
+  k1   string   "g"
+  0000 const        0
+  0005 defglobal    1
+  0010 undefined   
+  0011 halt        
+
+== g == 1 locaux, 1 paramètres, 0 constantes, self=-1
+  0000 getlocal     0
+  0005 int32        1
+  0010 add         
+  0011 return      
+  0012 undefined   
+  0013 return      
+

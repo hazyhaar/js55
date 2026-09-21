@@ -1,0 +1,11 @@
+test/language/expressions/this/11.1.1-1.js	sloppy	pass
+test/language/expressions/this/11.1.1-1.js	strict	pass
+test/language/expressions/this/S11.1.1_A1.js	sloppy	pass
+test/language/expressions/this/S11.1.1_A1.js	strict	pass
+test/language/expressions/this/S11.1.1_A3.1.js	sloppy	fail
+test/language/expressions/this/S11.1.1_A3.2.js	sloppy	fail
+test/language/expressions/this/S11.1.1_A3.2.js	strict	fail
+test/language/expressions/this/S11.1.1_A4.1.js	sloppy	fail
+test/language/expressions/this/S11.1.1_A4.1.js	strict	fail
+test/language/expressions/this/S11.1.1_A4.2.js	sloppy	fail
+test/language/expressions/this/S11.1.1_A4.2.js	strict	fail

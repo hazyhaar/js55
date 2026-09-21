@@ -1,0 +1,25 @@
+js55
+Copyright (c) 2026 HazyHaar (contact@hazyhaar.fr)
+
+CURRENT LICENSE: Business Source License 1.1 (BSL 1.1).
+This is NOT an open-source license and it is NOT Apache-2.0.
+
+All software in this repository (including the JavaScript/TypeScript execution
+engine, microsecond isolate manager, parser, lexer, AST optimizer, zero-copy
+buffer bridge, and associated packages) is licensed exclusively under the
+Business Source License 1.1 (BSL 1.1).
+
+Non-production use (evaluation, research, integration testing, benchmarking)
+and internal enterprise applications are permitted free of charge under the
+license and its Additional Use Grant.
+
+Commercial cloud hosted services, managed serverless platforms, and multi-tenant
+code-execution sandbox APIs require a commercial license agreement.
+
+See LICENSE for full terms and conditions.
+
+The Apache License, Version 2.0 applies ONLY as a future change license
+effective on or after September 21, 2028.
+
+For commercial licensing, enterprise support, or dedicated appliance
+deployments, contact: contact@hazyhaar.fr.

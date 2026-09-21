@@ -1,0 +1,16 @@
+test/built-ins/Date/parse/length.js	sloppy	fail
+test/built-ins/Date/parse/length.js	strict	fail
+test/built-ins/Date/parse/name.js	sloppy	fail
+test/built-ins/Date/parse/name.js	strict	fail
+test/built-ins/Date/parse/not-a-constructor.js	sloppy	fail
+test/built-ins/Date/parse/not-a-constructor.js	strict	fail
+test/built-ins/Date/parse/prop-desc.js	sloppy	fail
+test/built-ins/Date/parse/prop-desc.js	strict	fail
+test/built-ins/Date/parse/time-value-maximum-range.js	sloppy	fail
+test/built-ins/Date/parse/time-value-maximum-range.js	strict	fail
+test/built-ins/Date/parse/without-utc-offset.js	sloppy	fail
+test/built-ins/Date/parse/without-utc-offset.js	strict	fail
+test/built-ins/Date/parse/year-zero.js	sloppy	pass
+test/built-ins/Date/parse/year-zero.js	strict	pass
+test/built-ins/Date/parse/zero.js	sloppy	fail
+test/built-ins/Date/parse/zero.js	strict	fail

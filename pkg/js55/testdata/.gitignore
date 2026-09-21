@@ -1,0 +1,3 @@
+# L'arbre test262 n'est pas suivi : 53 874 fichiers, 83 Mo.
+# L'artefact versionné est TEST262_PIN, reconstituable par fetch_test262.sh.
+test262/

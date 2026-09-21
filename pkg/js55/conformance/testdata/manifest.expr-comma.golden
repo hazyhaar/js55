@@ -1,0 +1,11 @@
+test/language/expressions/comma/S11.14_A1.js	sloppy	fail
+test/language/expressions/comma/S11.14_A1.js	strict	fail
+test/language/expressions/comma/S11.14_A2.1_T1.js	sloppy	fail
+test/language/expressions/comma/S11.14_A2.1_T1.js	strict	fail
+test/language/expressions/comma/S11.14_A2.1_T2.js	sloppy	fail
+test/language/expressions/comma/S11.14_A2.1_T2.js	strict	fail
+test/language/expressions/comma/S11.14_A2.1_T3.js	sloppy	fail
+test/language/expressions/comma/S11.14_A2.1_T3.js	strict	fail
+test/language/expressions/comma/S11.14_A3.js	sloppy	pass
+test/language/expressions/comma/S11.14_A3.js	strict	pass
+test/language/expressions/comma/tco-final.js	strict	fail

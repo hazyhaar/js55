@@ -1,0 +1,16 @@
+test/language/expressions/grouping/S11.1.6_A1.js	sloppy	fail
+test/language/expressions/grouping/S11.1.6_A1.js	strict	fail
+test/language/expressions/grouping/S11.1.6_A2_T1.js	sloppy	fail
+test/language/expressions/grouping/S11.1.6_A2_T1.js	strict	fail
+test/language/expressions/grouping/S11.1.6_A2_T2.js	sloppy	fail
+test/language/expressions/grouping/S11.1.6_A3_T1.js	sloppy	fail
+test/language/expressions/grouping/S11.1.6_A3_T1.js	strict	fail
+test/language/expressions/grouping/S11.1.6_A3_T2.js	sloppy	fail
+test/language/expressions/grouping/S11.1.6_A3_T2.js	strict	fail
+test/language/expressions/grouping/S11.1.6_A3_T3.js	sloppy	fail
+test/language/expressions/grouping/S11.1.6_A3_T3.js	strict	fail
+test/language/expressions/grouping/S11.1.6_A3_T4.js	sloppy	pass
+test/language/expressions/grouping/S11.1.6_A3_T4.js	strict	pass
+test/language/expressions/grouping/S11.1.6_A3_T6.js	sloppy	fail
+test/language/expressions/grouping/S11.1.6_A3_T7.js	sloppy	fail
+test/language/expressions/grouping/S11.1.6_A3_T7.js	strict	fail

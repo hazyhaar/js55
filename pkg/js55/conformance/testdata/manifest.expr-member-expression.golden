@@ -1,0 +1,2 @@
+test/language/expressions/member-expression/computed-reference-null-or-undefined.js	sloppy	pass
+test/language/expressions/member-expression/computed-reference-null-or-undefined.js	strict	pass
