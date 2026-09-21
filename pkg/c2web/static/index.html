@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>js55 — Sovereign Pure Go 1.27 JavaScript & TypeScript Runtime</title>
-    <meta name="description" content="100% Pure Go 1.27 (0-CGO) microsecond isolate execution engine. <5 µs startup, 32 KB per isolate, 10,000+ concurrent contexts.">
+    <title>js55 — Sovereign Pure Go 1.27 JavaScript Runtime</title>
+    <meta name="description" content="Pure Go 1.27 (0-CGO) isolate execution engine with per-isolate memory and CPU quotas. Metrology in qualification.">
     <meta property="og:title" content="js55 — Sovereign Pure Go 1.27 JavaScript Runtime">
-    <meta property="og:description" content="100% Pure Go 1.27 (0-CGO) microsecond isolate execution engine.">
+    <meta property="og:description" content="Pure Go 1.27 (0-CGO) isolate execution engine with per-isolate memory and CPU quotas.">
     <meta property="og:image" content="/og-image.png">
     <link rel="stylesheet" href="/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -23,7 +23,7 @@
             </div>
             <nav class="nav-links">
                 <a href="#sandbox">Live REPL</a>
-                <a href="#benchmarks">Benchmarks</a>
+                <a href="#measurement">Measurement</a>
                 <a href="#architecture">Architecture</a>
                 <a href="#licensing">Licensing</a>
                 <a href="https://github.com/hazyhaar/js55" target="_blank" class="btn-github">GitHub</a>
@@ -34,27 +34,27 @@
     <main>
         <!-- Hero Section -->
         <section class="hero">
-            <div class="hero-badge">Sovereign • 0-CGO • &lt;5 µs Isolate Startup • Zero-Copy Buffer Bridge</div>
-            <h1 class="hero-title">Microsecond JavaScript & TypeScript Runtime for AI Agents</h1>
+            <div class="hero-badge">Sovereign • 0-CGO • Per-isolate Quotas • Gas Metering</div>
+            <h1 class="hero-title">Sovereign JavaScript Runtime for AI Agents</h1>
             <p class="hero-subtitle">
-                Engineered for autonomous LLM agent execution, serverless edge workers, and safe sandboxing. Run 10,000+ concurrent isolates per process with strict memory quotas and fuel metering.
+                Engineered for autonomous LLM agent execution, serverless edge workers, and safe sandboxing. Run isolated JavaScript contexts per process with strict memory quotas and gas metering. TypeScript support is experimental (syntactic type erasure, in progress).
             </p>
             <div class="hero-stats">
                 <div class="stat-card">
-                    <div class="stat-value">&lt; 5 µs</div>
-                    <div class="stat-label">Isolate Startup Latency</div>
+                    <div class="stat-value">0-CGO</div>
+                    <div class="stat-label">Pure Go Static Binary</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">32 KB</div>
-                    <div class="stat-label">Memory per Idle Isolate</div>
+                    <div class="stat-value">Per-Isolate</div>
+                    <div class="stat-label">Memory &amp; CPU Quotas</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">10,000+</div>
-                    <div class="stat-label">Isolates per Go Process</div>
+                    <div class="stat-value">Gas Metering</div>
+                    <div class="stat-label">Deterministic CPU Budget</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">0 B/op</div>
-                    <div class="stat-label">Go &lt;-&gt; JS Buffer Bridge</div>
+                    <div class="stat-value">Hermetic</div>
+                    <div class="stat-label">Isolated Sandboxes</div>
                 </div>
             </div>
         </section>
@@ -63,7 +63,7 @@
         <section id="sandbox" class="section">
             <div class="section-header">
                 <h2>Interactive Isolate Sandbox & REPL</h2>
-                <p>Execute JavaScript code in a real-time sovereign Isolate. Observe microsecond startup and execution latency.</p>
+                <p>Execute JavaScript code in a real sovereign isolate. Startup and execution latency are measured live for this call.</p>
             </div>
 
             <div class="sandbox-card">
@@ -83,7 +83,7 @@ nums.map(x => x * 2).reduce((a, b) => a + b, 0);</textarea>
                 <div class="sandbox-actions">
                     <button id="btn-eval" class="btn-primary">Execute in New Isolate</button>
                     <div class="meta-badges">
-                        <span id="startup-badge" class="badge">Startup: ~4 µs</span>
+                        <span id="startup-badge" class="badge">Startup: --</span>
                         <span id="exec-badge" class="badge">Exec: --</span>
                         <span id="mem-badge" class="badge">Quota: 2 MB</span>
                     </div>
@@ -99,31 +99,21 @@ nums.map(x => x * 2).reduce((a, b) => a + b, 0);</textarea>
             </div>
         </section>
 
-        <!-- Comparative Benchmarks -->
-        <section id="benchmarks" class="section">
+        <!-- Measurement status -->
+        <section id="measurement" class="section">
             <div class="section-header">
-                <h2>Comparative Runtime Benchmarks</h2>
-                <p>Benchmarked on Linux x86_64 amd64 (Go 1.27, hardware-isolated).</p>
+                <h2>Measurement Status</h2>
+                <p>Reproducible figures are not published yet.</p>
             </div>
 
-            <div class="bench-grid">
-                <div class="bench-card">
-                    <h3>Isolate Startup Time</h3>
-                    <div class="bench-speed">4.2 µs</div>
-                    <p>8,300x faster than Node.js (35 ms) and 4,200x faster than Deno (18 ms). Instantaneous context spawning for LLM agent function calls.</p>
-                    <div class="progress-bar"><div class="progress-fill" style="width: 98%;"></div></div>
+            <div class="arch-cards">
+                <div class="arch-card">
+                    <h3>Metrology in qualification</h3>
+                    <p>Isolate startup latency, idle memory footprint and host-call overhead are measured locally, but no cross-runtime comparison or benchmark number is published until it rests on named, reproducible benchmarks on identified hardware, with their date and conditions.</p>
                 </div>
-                <div class="bench-card">
-                    <h3>Idle Memory Consumption</h3>
-                    <div class="bench-speed">32 KB</div>
-                    <p>930x lighter than V8 isolate baseline (30 MB). Enables high-density serverless isolation on low-cost compute nodes.</p>
-                    <div class="progress-bar"><div class="progress-fill" style="width: 95%;"></div></div>
-                </div>
-                <div class="bench-card">
-                    <h3>Host Call Overhead (Go ↔ JS)</h3>
-                    <div class="bench-speed">18 ns</div>
-                    <p>Zero-copy memory sharing without CGO, IPC sockets, or FFI marshalling penalties.</p>
-                    <div class="progress-bar"><div class="progress-fill" style="width: 92%;"></div></div>
+                <div class="arch-card">
+                    <h3>What is true today</h3>
+                    <p>The engine is pure Go and builds with CGO disabled. Isolates carry enforceable memory quotas and a CPU gas budget. The live REPL above reports the measured startup and execution time of each call it serves.</p>
                 </div>
             </div>
         </section>
@@ -139,12 +129,12 @@ nums.map(x => x * 2).reduce((a, b) => a + b, 0);</textarea>
                 <div class="arch-card">
                     <div class="arch-icon">🛡️</div>
                     <h3>Hermetic Memory Sandboxes</h3>
-                    <p>Each isolate is completely segregated in memory with hard byte quotas. A memory leak or crash in one script never impacts others.</p>
+                    <p>Each isolate is segregated in memory with hard byte quotas. A runaway allocation in one script is contained by its own quota rather than being allowed to exhaust the host process.</p>
                 </div>
                 <div class="arch-card">
                     <div class="arch-icon">⏱️</div>
                     <h3>CPU Fuel & Gas Limiting</h3>
-                    <p>Every instruction decrements a fuel counter. Infinite loops, recursive explosions, and ReDoS attacks are automatically aborted.</p>
+                    <p>Every instruction decrements a fuel counter. Infinite loops, recursive explosions, and ReDoS attacks are aborted deterministically.</p>
                 </div>
                 <div class="arch-card">
                     <div class="arch-icon">🚀</div>
@@ -158,7 +148,7 @@ nums.map(x => x * 2).reduce((a, b) => a + b, 0);</textarea>
         <section id="licensing" class="section">
             <div class="section-header">
                 <h2>Commercial Licensing & Enterprise B2B</h2>
-                <p>Licensed under Business Source License 1.1 (BSL 1.1). Free for research, CLI tooling, and internal enterprise applications.</p>
+                <p>Licensed under Business Source License 1.1 (BSL 1.1). Free for non-commercial use, evaluation, local development, and research.</p>
             </div>
 
             <div class="pricing-grid">
@@ -167,10 +157,9 @@ nums.map(x => x * 2).reduce((a, b) => a + b, 0);</textarea>
                     <div class="price">Free</div>
                     <div class="price-desc">Under BSL 1.1 Additional Use Grant</div>
                     <ul class="price-features">
-                        <li>✓ Internal enterprise applications</li>
+                        <li>✓ Non-commercial use</li>
                         <li>✓ Local development, CLI tools, & testing</li>
-                        <li>✓ Public blockchain testnets</li>
-                        <li>✓ Academic research & evaluation</li>
+                        <li>✓ Research & evaluation</li>
                     </ul>
                 </div>
                 <div class="price-card featured">
@@ -192,7 +181,7 @@ nums.map(x => x * 2).reduce((a, b) => a + b, 0);</textarea>
 
     <footer class="footer">
         <div class="footer-container">
-            <p>© 2026 HazyHaar. All rights reserved. Licensed under Business Source License 1.1 (converts to Apache 2.0 on 2028-09-21).</p>
+            <p>© 2026 HazyHaar. All rights reserved. The js55 engine is licensed under Business Source License 1.1 (converts to Apache 2.0 on 2028-09-21).</p>
             <p>Inquiries: <a href="mailto:contact@hazyhaar.fr">contact@hazyhaar.fr</a> • Paris, France</p>
         </div>
     </footer>

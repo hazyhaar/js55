@@ -4,21 +4,18 @@ License text copyright (c) 2017 MariaDB Corporation Ab, All Rights Reserved.
 Parameters
 
 Licensor:             HazyHaar
-Licensed Work:        js55 v1.0.
+Licensed Work:        js55
                       The Licensed Work is (c) 2026 HazyHaar
-Additional Use Grant: You may make production use of the Licensed Work on public
-                      blockchain test networks, in local CLI tooling, or in
-                      non-hosted internal enterprise applications. Providing the
-                      Licensed Work as a commercial hosted code execution service,
-                      cloud serverless platform, or managed sandbox API requires
-                      a commercial license agreement.
+Additional Use Grant: Non-commercial use, evaluation, local development,
+                      research, internal testing, and personal projects are
+                      permitted without charge.
 
 Change Date:          2028-09-21
 
 Change License:       Apache License, Version 2.0
 
 For information about alternative licensing arrangements for the Software,
-please visit: contact@hazyhaar.fr
+please visit: https://hazyhaar.fr
 
 Notice
 

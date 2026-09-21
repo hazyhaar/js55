@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package str
 
 import (
@@ -226,4 +227,12 @@ func (t *Table) Len() int { return t.count }
 func (t *Table) Lookup(s *String) (*String, bool) {
 	got := t.lookup(s)
 	return got, got != nil
+}
+
+// Find rend l'instance déjà internée, sans insertion ni allocation.
+func (t *Table) Find(s *String) *String {
+	if s == nil {
+		return nil
+	}
+	return t.lookup(s)
 }

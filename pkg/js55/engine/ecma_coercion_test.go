@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine_test
 
@@ -51,7 +51,7 @@ func TestECMACoercion_MathAndParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, err := iso.Eval(ctx, tt.script)
+			res, err := iso.EvalContext(ctx, tt.script)
 			if err != nil {
 				t.Fatalf("Erreur exécution '%s': %v", tt.script, err)
 			}
@@ -94,7 +94,7 @@ func TestECMACoercion_PrimitiveConversion(t *testing.T) {
 
 	// 1. String({toString(){return 'ok';}})
 	t.Run("String with custom toString returning primitive string", func(t *testing.T) {
-		res, err := iso.Eval(ctx, "String({toString(){return 'ok';}})")
+		res, err := iso.EvalContext(ctx, "String({toString(){return 'ok';}})")
 		if err != nil {
 			t.Fatalf("Erreur inattendue: %v", err)
 		}
@@ -106,7 +106,7 @@ func TestECMACoercion_PrimitiveConversion(t *testing.T) {
 
 	// 2. Objet numérique valueOf renvoyant string
 	t.Run("Numeric coercion with valueOf returning string", func(t *testing.T) {
-		res, err := iso.Eval(ctx, "const obj = { valueOf() { return '42'; } }; +obj")
+		res, err := iso.EvalContext(ctx, "const obj = { valueOf() { return '42'; } }; +obj")
 		if err != nil {
 			t.Fatalf("Erreur inattendue: %v", err)
 		}
@@ -114,7 +114,7 @@ func TestECMACoercion_PrimitiveConversion(t *testing.T) {
 			t.Fatalf("Attendu 42, obtenu %f", res.ToFloat())
 		}
 
-		res2, err2 := iso.Eval(ctx, "const obj2 = { valueOf() { return '5'; } }; 3 * obj2")
+		res2, err2 := iso.EvalContext(ctx, "const obj2 = { valueOf() { return '5'; } }; 3 * obj2")
 		if err2 != nil {
 			t.Fatalf("Erreur inattendue: %v", err2)
 		}
@@ -137,7 +137,7 @@ func TestECMACoercion_PrimitiveConversion(t *testing.T) {
 			}
 			caught;
 		`
-		res, err := iso.Eval(ctx, script)
+		res, err := iso.EvalContext(ctx, script)
 		if err != nil {
 			t.Fatalf("Erreur inattendue: %v", err)
 		}
@@ -146,7 +146,7 @@ func TestECMACoercion_PrimitiveConversion(t *testing.T) {
 		}
 
 		// Reprise valide sur la même instance après l'erreur
-		resRecover, errRecover := iso.Eval(ctx, "1 + 1")
+		resRecover, errRecover := iso.EvalContext(ctx, "1 + 1")
 		if errRecover != nil {
 			t.Fatalf("Erreur lors de la reprise: %v", errRecover)
 		}
@@ -171,7 +171,7 @@ func TestECMACoercion_PrimitiveConversion(t *testing.T) {
 			}
 			caughtWrapper;
 		`
-		resW, errW := iso.Eval(ctx, scriptWrapper)
+		resW, errW := iso.EvalContext(ctx, scriptWrapper)
 		if errW != nil {
 			t.Fatalf("Erreur inattendue: %v", errW)
 		}
@@ -180,7 +180,7 @@ func TestECMACoercion_PrimitiveConversion(t *testing.T) {
 		}
 
 		// Primitif string retourné par toString est accepté
-		resP, errP := iso.Eval(ctx, "const good = { toString() { return 'primitive'; }, valueOf() { return {}; } }; '' + good")
+		resP, errP := iso.EvalContext(ctx, "const good = { toString() { return 'primitive'; }, valueOf() { return {}; } }; '' + good")
 		if errP != nil {
 			t.Fatalf("Erreur inattendue: %v", errP)
 		}
@@ -204,7 +204,7 @@ func TestECMACoercion_PrimitiveConversion(t *testing.T) {
 			}
 			caughtSym;
 		`
-		resSym, errSym := iso.Eval(ctx, scriptSym)
+		resSym, errSym := iso.EvalContext(ctx, scriptSym)
 		if errSym != nil {
 			t.Fatalf("Erreur inattendue lors de +Symbol: %v", errSym)
 		}
@@ -223,7 +223,7 @@ func TestECMACoercion_PrimitiveConversion(t *testing.T) {
 			}
 			caughtObjSym;
 		`
-		resObjSym, errObjSym := iso.Eval(ctx, scriptObjSym)
+		resObjSym, errObjSym := iso.EvalContext(ctx, scriptObjSym)
 		if errObjSym != nil {
 			t.Fatalf("Erreur inattendue lors de +objWithSymbol: %v", errObjSym)
 		}

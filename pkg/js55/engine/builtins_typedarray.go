@@ -1,11 +1,13 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine
 
 import (
 	"encoding/binary"
-	"github.com/hazyhaar/js55/pkg/js55/str"
 	"math"
+	"runtime"
+
+	"github.com/hazyhaar/js55/pkg/js55/str"
 )
 
 func taByteSize(name string) int {
@@ -133,7 +135,19 @@ func (vm *VM) installArrayBuffer() {
 	vm.SetGlobal("ArrayBuffer", ctorV)
 }
 
-func (vm *VM) arrayBufferFromArgs(args []Value, proto Handle) (Value, error) {
+const maxArrayBufferLen = 1 << 30 // 1 GiB
+
+func (vm *VM) arrayBufferFromArgs(args []Value, proto Handle) (retVal Value, outErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if _, isRuntime := r.(runtime.Error); !isRuntime {
+				panic(r)
+			}
+			retVal = Undefined
+			outErr = vm.throwText(nil, "RangeError: Invalid array buffer length")
+		}
+	}()
+
 	n := 0
 	var err error
 	if len(args) > 0 {
@@ -161,6 +175,10 @@ func (vm *VM) arrayBufferFromArgs(args []Value, proto Handle) (Value, error) {
 	if o != nil {
 		o.proto = proto
 		vm.heap.TrackAlloc(int64(n))
+		if n > maxArrayBufferLen {
+			vm.heap.TrackFree(int64(n))
+			return Undefined, vm.throwText(nil, "RangeError: Invalid array buffer length")
+		}
 		o.bytes = make([]byte, n)
 		o.arrayBuffer = true
 		o.resizable = resizable
@@ -183,7 +201,7 @@ func (vm *VM) bufferIndex(v Value) (int, error) {
 	}
 	n = math.Trunc(n)
 	if n < 0 || n > 9007199254740991 || n >= float64(int(^uint(0)>>1)) {
-		return 0, vm.throwText(nil, "RangeError: invalid buffer index")
+		return 0, vm.throwText(nil, "RangeError: Invalid array buffer length")
 	}
 	return int(n), nil
 }
@@ -191,6 +209,13 @@ func (vm *VM) bufferIndex(v Value) (int, error) {
 func (vm *VM) arrayBufferResize(this Value, args []Value) error {
 	if !this.IsObject() || !vm.isArrayBuffer(this) {
 		return vm.throwText(&frame{}, "TypeError: ArrayBuffer.prototype.resize called on incompatible receiver")
+	}
+	o := vm.heap.Get(this.Handle())
+	if o == nil {
+		return vm.throwText(&frame{}, "TypeError: ArrayBuffer.prototype.resize called on incompatible receiver")
+	}
+	if !o.resizable {
+		return vm.throwText(nil, "TypeError: ArrayBuffer is not resizable")
 	}
 	n := 0
 	var err error
@@ -203,13 +228,6 @@ func (vm *VM) arrayBufferResize(this Value, args []Value) error {
 	max := int(vm.toNumber(vm.getProp(this, str.FromGo("maxByteLength"))))
 	if n < 0 || n > max {
 		return vm.throwText(&frame{}, "RangeError: Invalid array buffer length")
-	}
-	o := vm.heap.Get(this.Handle())
-	if o == nil {
-		return vm.throwText(&frame{}, "TypeError: ArrayBuffer.prototype.resize called on incompatible receiver")
-	}
-	if !o.resizable {
-		return vm.throwText(nil, "TypeError: ArrayBuffer is not resizable")
 	}
 	old := len(o.bytes)
 	if n == old {

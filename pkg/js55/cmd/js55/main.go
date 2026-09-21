@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 // Command js55 — Moteur d'exécution JavaScript / ECMAScript souverain 0-CGO Go 1.27.
 package main
@@ -30,7 +30,7 @@ func main() {
 	ctx := context.Background()
 
 	if *evalFlag != "" {
-		res, err := iso.Eval(ctx, *evalFlag)
+		res, err := iso.EvalContext(ctx, *evalFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Uncaught Error: %v\n", err)
 			os.Exit(1)
@@ -54,7 +54,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	res, err := iso.Eval(ctx, string(scriptBytes))
+	chunk, err := iso.Compile(string(scriptBytes), args[0], false)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Uncaught %v\n", err)
+		os.Exit(1)
+	}
+
+	res, err := iso.Execute(ctx, chunk)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Uncaught %v\n", err)
 		os.Exit(1)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package parser
 
 import "github.com/hazyhaar/js55/pkg/js55/ast"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package isolate
 
 import (
@@ -23,7 +24,7 @@ func TestCheckpointSeesInterrupt(t *testing.T) {
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		_, e := iso.Eval(context.Background(), `while (true) {}`)
+		_, e := iso.EvalContext(context.Background(), `while (true) {}`)
 		errCh <- e
 	}()
 	deadline := time.Now().Add(2 * time.Second)
@@ -75,7 +76,7 @@ func TestCheckpointDoesNotBreakOrdinaryEval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := iso.Eval(context.Background(), `var s=0; for (var i=0;i<1000;i++) s+=i; s`)
+	v, err := iso.EvalContext(context.Background(), `var s=0; for (var i=0;i<1000;i++) s+=i; s`)
 	if err != nil {
 		t.Fatal(err)
 	}

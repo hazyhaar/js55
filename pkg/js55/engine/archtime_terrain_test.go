@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 //go:build archtime_geometry
 
 package engine
@@ -15,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hazyhaar/c2pkg/c2archtsim/geometry"
+	geometry "github.com/hazyhaar/js55/pkg/c2archtsim/geometry"
 )
 
 const terrainPositionsPath = "/devhoros/GAFP/audits/js55-perf-20260909/native/pos.bin"

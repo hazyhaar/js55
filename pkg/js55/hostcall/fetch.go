@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package hostcall
 
@@ -66,7 +66,18 @@ func FetchResponse(ctx context.Context, raw string, p FetchPolicy) (*Response, e
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{Timeout: p.Timeout}
+	client := &http.Client{
+		Timeout: p.Timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("js55: trop de redirections")
+			}
+			if !p.Allowed(req.URL.Hostname()) {
+				return fmt.Errorf("%w: %s", ErrAllowlist, req.URL.Hostname())
+			}
+			return nil
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

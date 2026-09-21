@@ -2,23 +2,17 @@
 
 **ID HPM55 :** `01a03f07-1c41-7e0c-97a6-1202ef5f51d1`  
 **Parent HPM55 :** `019fd633-6735-705c-8c57-e09608dca298` (`c2simd`)  
-**Intention :** Runtime et environnement d'exécution JavaScript souverain pur Go 1.27 (0-CGO, multi-tenant massif, intégration Netpoller/Goroutines Go, isolats légers avec metering CPU/RAM, APIs Node.js 20/22+ & Web Standards natives, pont zero-copy Buffer $\leftrightarrow$ `[]byte`, accélération hybride SIMD/JIT).
+**Intention :** Runtime et environnement d'exécution JavaScript souverain pur Go 1.27 (0-CGO, multi-tenant massif, intégration Netpoller/Goroutines Go, isolats légers avec metering CPU/RAM, APIs Web Standards natives).
 
 ---
 
 ## 1. Principes Directeurs & Cadre Doctrinal
 
-Le module `js55` constitue le socle d'exécution JavaScript souverain de l'écosystème Horos, conçu pour remplacer intégralement Node.js, Deno et les runtimes basés sur V8 au sein des applications et micro-services distribués.
+Le module `js55` constitue le socle d'exécution JavaScript souverain de l'écosystème Horos, embarqué dans les applications et micro-services Go distribués.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │                            APPLICATION HÔTE GO 1.27                              │
-│  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │                              pkg/js55/pool                                 │  │
-│  │          (Gestionnaire de réserve d'isolats chauds & recyclage)            │  │
-│  └─────────────────────────────────────┬──────────────────────────────────────┘  │
-│                                        │                                         │
-│                                        ▼                                         │
 │  ┌────────────────────────────────────────────────────────────────────────────┐  │
 │  │                            pkg/js55/isolate                                │  │
 │  │  ┌─────────────────────────┐ ┌────────────────────────┐ ┌───────────────┐ │  │
@@ -33,7 +27,7 @@ Le module `js55` constitue le socle d'exécution JavaScript souverain de l'écos
 │  │  ┌──────────────────────────────────────────────────────────────────────┐  │  │
 │  │  │                           pkg/js55/runtime                           │  │  │
 │  │  │  ┌───────────────┐ ┌───────────────┐ ┌──────────────┐ ┌────────────┐ │  │  │
-│  │  │  │  fs (Sandbox) │ │ http / fetch  │ │ crypto/subtle│ │   buffer   │ │  │  │
+│  │  │  │  fs (Sandbox) │ │ http / fetch  │ │ crypto/subtle│ │   runtime  │ │  │  │
 │  │  │  └───────────────┘ └───────────────┘ └──────────────┘ └────────────┘ │  │  │
 │  │  │  ┌───────────────┐ ┌───────────────┐ ┌──────────────┐ ┌────────────┐ │  │  │
 │  │  │  │ stream/events │ │ timers/wheel  │ │  path / os   │ │  console   │ │  │  │
@@ -45,8 +39,8 @@ Le module `js55` constitue le socle d'exécution JavaScript souverain de l'écos
 │  ┌────────────────────────────────────────────────────────────────────────────┐  │
 │  │              INFRASTRUCTURE SYSTÈME & ACCÉLÉRATION MATÉRIELLE              │  │
 │  │  ┌─────────────────────┐ ┌────────────────────┐ ┌───────────────────────┐  │  │
-│  │  │ Go 1.27 Netpoller   │ │ c2pkg/c2jit (JIT)  │ │ c2pkg/c2archsimd      │  │  │
-│  │  │ (E/S non-bloquantes)│ │ (Boucles chaudes)  │ │ (Vectorisation AVX2)  │  │  │
+│  │  │ Go 1.27 Netpoller   │ │ c2pkg primitives   │ │ c2pkg/c2archsimd      │  │  │
+│  │  │ (E/S non-bloquantes)│ │ (base64, hash)     │ │ (Vectorisation AVX2)  │  │  │
 │  │  └─────────────────────┘ └────────────────────┘ └───────────────────────┘  │  │
 │  └────────────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────────────┘
@@ -54,25 +48,21 @@ Le module `js55` constitue le socle d'exécution JavaScript souverain de l'écos
 
 1. **Pur Go 1.27 & Zéro Dépendance CGO (`CGO_ENABLED=0`) :**  
    Aucune inclusion de code C, aucune liaison dynamique (`libv8.so`, `libnode.so`, `libuv.so`), aucun binaire externe. Compilation statique universelle, compatibilité totale avec `GOEXPERIMENT=simd`.
-2. **Concurrence Native M:N & Remplacement de `libuv` :**  
+2. **Concurrence Native M:N :**  
    Substitution de la boucle d'événements mono-threadée classique par le planificateur de Goroutines et le *Netpoller* non-bloquant de Go. Les opérations d'E/S (réseau, disque) sont réparties sur l'ensemble des cœurs processeur sans bloquer les isolats.
 3. **Multi-Tenancy Ultra-Léger :**  
-   Capacité d'héberger plus de 10 000 isolats JavaScript simultanés et indépendants dans un seul processus Go. Empreinte mémoire au repos inférieure à $500\text{ Ko}$ par contexte.
+   Capacité d'héberger un grand nombre d'isolats JavaScript simultanés et indépendants dans un seul processus Go, avec une empreinte mémoire dominée par les quotas alloués à chaque contexte.
 4. **Cloisonnement & Sandboxing Déterministe :**  
    Chaque isolat est strictement étanche (zéro état global partagé). Contrôle absolu des ressources via un compteur d'instructions atomique (*gas meter*), des plafonds de mémoire vive (*heap quota*), une arborescence de fichiers restreinte (*VirtualFS*) et une liste blanche d'adresses réseau (*network allowlist*).
-5. **Pont Zero-Copy Buffer $\leftrightarrow$ `[]byte` :**  
-   Partage direct de mémoire entre les tranches d'octets Go et les objets `Buffer` / `Uint8Array` JavaScript sans duplication mémoire lors des lectures/écritures réseau ou disque.
-6. **Accélération Hybride ARCHTIME & Hot-Spots :**  
-   - Exécution instantanée par interpréteur de bytecode pur Go.
-   - Compilateur AOT statique [`cmd/c2jsc`](file:///devhoros/c2simd/cmd/c2jsc/) pour les modules immutables résolus avant compilation.
-   - Détection des boucles intensives et bascule dynamique vers le micro-assembleur JIT [`c2pkg/c2jit`](file:///devhoros/c2simd/c2pkg/c2jit/) pour l'émission de code machine natif AVX2/x86-64/ARM64.
+5. **Exécution par Interpréteur de Bytecode Pur Go :**  
+   - Exécution immédiate par interpréteur de bytecode pur Go, sans compilation à la volée ni compilation anticipée, et sans émission de code machine.
    - Primitives vectorielles déléguées aux bibliothèques [`c2pkg`](file:///devhoros/c2simd/c2pkg/) (`c2archsimd`, `c2base64`, `c2chacha8`, `c2poly1305`).
 
 ---
 
 ## 2. Découpage Modulaire Exhaustif
 
-Le package `js55` est structuré en cinq sous-systèmes modulaires autonomes :
+Le package `js55` est structuré en sous-systèmes modulaires autonomes :
 
 ```
 /devhoros/pkg/js55/
@@ -98,10 +88,7 @@ Le package `js55` est structuré en cinq sous-systèmes modulaires autonomes :
 │   ├── isolate.go
 │   ├── limits.go
 │   └── sandbox.go
-├── runtime/            # Émulation complète des APIs Node.js 20/22+ et Web Standards
-│   ├── buffer/         # Module Buffer & Uint8Array zero-copy
-│   │   ├── buffer.go
-│   │   └── zero_copy.go
+├── runtime/            # APIs Web Standards natives et bac à sable
 │   ├── crypto/         # Web Crypto API & Node crypto via c2pkg
 │   │   ├── cipher.go
 │   │   ├── crypto.go
@@ -131,17 +118,12 @@ Le package `js55` est structuré en cinq sous-systèmes modulaires autonomes :
 │       ├── interval.go
 │       ├── timeout.go
 │       └── wheel.go
-├── bridge/             # Passerelle bidirectionnelle Go <-> JS
-│   ├── convert.go
-│   ├── error.go
-│   ├── function.go
-│   ├── reflect.go
-│   └── struct.go
-└── pool/               # Gestionnaire de réserve d'isolats chauds (Warm Pool)
-    ├── metrics.go
-    ├── pool.go
-    ├── recycle.go
-    └── stats.go
+└── bridge/             # Passerelle bidirectionnelle Go <-> JS
+    ├── convert.go
+    ├── error.go
+    ├── function.go
+    ├── reflect.go
+    └── struct.go
 ```
 
 ### 2.1. Sous-système `engine/` (Noyau d'Interprétation)
@@ -159,9 +141,8 @@ Le package `js55` est structuré en cinq sous-systèmes modulaires autonomes :
   - Environnement : Isolation des variables d'environnement (`process.env`).
 - **Interruption et Mise en Pause :** Primitives `Interrupt()`, `Pause()`, `Resume()`, permettant de suspendre ou terminer un isolat depuis n'importe quelle goroutine.
 
-### 2.3. Sous-système `runtime/` (Émulation Node.js 20/22+ & Web Standards)
-- **`buffer` / `Uint8Array` :**
-  - Pont zero-copy : Un `Buffer` JavaScript encapsule directement un pointeur vers un `[]byte` Go sous-jacent.
+### 2.3. Sous-système `runtime/` (APIs Web Standards Natives)
+- **`Uint8Array` / `ArrayBuffer` :**
   - Encodages supportés : `utf8`, `ascii`, `utf16le`, `base64`, `hex`, `binary`.
   - Opérations accélérées : Décodage Base64 et Hex via [`c2pkg/c2base64`](file:///devhoros/c2simd/c2pkg/c2base64/) et `c2archsimd`.
 - **`fs` & `fs/promises` :**
@@ -190,10 +171,6 @@ Le package `js55` est structuré en cinq sous-systèmes modulaires autonomes :
 - **Appels de Fonctions :** Possibilité d'exposer n'importe quelle fonction Go `func(ctx context.Context, args ...any) (any, error)` comme fonction synchrone ou asynchrone (retournant une `Promise`) en JavaScript.
 - **Propagation d'Erreurs :** Traduction bidirectionnelle des paniques / erreurs Go en exceptions JavaScript (`Error`, `TypeError`, `RangeError`) et réciproquement.
 
-### 2.5. Sous-système `pool/` (Gestionnaire de Réserve d'Isolats Chauds)
-- **Recyclage Rapide (*Warm Pool*) :** Réinitialisation d'un isolat en moins de $50\ \mu\text{s}$ via `Reset()`, évitant le coût de réallocation du tas et de réévaluation du code de base.
-- **Dimensionnement Dynamique :** Capacité minimale et maximale d'isolats actifs, éviction LRU des isolats inactifs, surveillance de la santé globale.
-
 ---
 
 ## 3. Accords de Niveau de Service (SLAs) & Performances
@@ -206,7 +183,6 @@ Le package `js55` est structuré en cinq sous-systèmes modulaires autonomes :
 | **Passage à l'Échelle Multi-Tenant** | $10\,000$ isolats / $4\text{ Go}$ RAM | $10\,000$ isolats / $5\text{ Go}$ RAM | `TestMultiTenant10kIsolates` |
 | **Fuite Mémoire (10 000 cycles création/destruction)** | $0\text{ octet}$ net | $0\text{ fuite}$ détectée (`pprof`) | `TestZeroMemoryLeakLifecycle` |
 | **Débit I/O JSON / HTTP (par cœur)** | $> 120\,000\text{ req/s}$ | $\ge 80\,000\text{ req/s}$ | `BenchmarkHTTPServerThroughput` |
-| **Traversée Pont Zero-Copy Buffer (1 Mo)** | $< 100\text{ ns}$ ($0\text{ B/op}$) | $\le 200\text{ ns}$ ($0\text{ B/op}$) | `BenchmarkZeroCopyBufferTransfer` |
 | **Précision du Compteur CPU (Gas Meter)** | Dérive $< 0{,}1\,\%$ | Dérive $\le 0{,}5\,\%$ | `TestGasMeterDeterministicPrecision` |
 
 ---
@@ -243,7 +219,6 @@ type Config struct {
 	Stderr      io.Writer          // Redirection de console.error (default: os.Stderr)
 
 	// Optimisation
-	EnableJIT   bool               // Activation de l'accélération c2pkg/c2jit
 	PreloadCode []Script           // Scripts précompilés injectés au démarrage
 }
 
@@ -273,7 +248,8 @@ type Isolate struct {
 func (e *Engine) NewIsolate(cfg Config) (*Isolate, error)
 
 // Méthodes d'exécution sur l'Isolate
-func (iso *Isolate) Eval(ctx context.Context, code string) (Value, error)
+func (iso *Isolate) Eval(source string) (Value, error)
+func (iso *Isolate) EvalContext(ctx context.Context, source string) (Value, error)
 func (iso *Isolate) RunScript(ctx context.Context, script Script) (Value, error)
 func (iso *Isolate) Call(ctx context.Context, funcName string, args ...any) (Value, error)
 
@@ -304,7 +280,6 @@ type Value interface {
 	IsArray() bool
 	IsFunction() bool
 	IsPromise() bool
-	IsBuffer() bool
 
 	Bool() bool
 	Int64() int64
@@ -322,18 +297,6 @@ type Object interface {
 	Delete(key string) error
 	Keys() []string
 }
-
-// Pool gère une réserve d'isolats chauds pour charges transactionnelles.
-type Pool struct {
-	// Champs internes non exportés
-}
-
-// NewPool crée une réserve d'isolats dimensionnée.
-func NewPool(e *Engine, cfg Config, initialSize, maxSize int) (*Pool, error)
-func (p *Pool) Acquire(ctx context.Context) (*Isolate, error)
-func (p *Pool) Release(iso *Isolate)
-func (p *Pool) Stats() PoolStats
-func (p *Pool) Close() error
 ```
 
 ---
@@ -349,7 +312,6 @@ Toute implémentation ou modification du package `js55` doit satisfaire sans exc
 │ Domaine de Test   │ Fichier de Test Cible            │ Critère de Réussite       │
 ├───────────────────┼──────────────────────────────────┼───────────────────────────┤
 │ Conformité ES2023 │ engine/ecma_test.go              │ 100% assertions validées  │
-│ Zero-Copy Buffer  │ runtime/buffer/buffer_test.go    │ 0 alloc sur conversions   │
 │ Filesystem Sandbox│ runtime/fs/fs_test.go            │ Blocage évasion répertoire│
 │ Netpoller HTTP    │ runtime/http/http_test.go        │ 10k req non-bloquantes    │
 │ Cryptographie C2  │ runtime/crypto/crypto_test.go    │ Parité bit-exacte c2pkg   │
@@ -358,7 +320,6 @@ Toute implémentation ou modification du package `js55` doit satisfaire sans exc
 │ Quota Mémoire RAM │ isolate/heap_test.go             │ ErrMemoryLimit déclenchée │
 │ Multi-Tenant 10k  │ isolate/multitenant_test.go      │ 10 000 isolats simultanés │
 │ Zéro Fuite RAM    │ isolate/leak_test.go             │ 0 octet résiduel à blanc  │
-│ Warm Pool         │ pool/pool_test.go                │ Reset < 50 µs sous charge │
 │ Intégrité Races   │ go test -race ./...              │ Zéro conflit de données   │
 └───────────────────┴──────────────────────────────────┴───────────────────────────┘
 ```
@@ -369,11 +330,9 @@ Toute implémentation ou modification du package `js55` doit satisfaire sans exc
    Exécution d'un script adverse contenant `while(true) {}`. L'isolat doit interrompre le traitement avec l'erreur `ErrExecutionQuotaExceeded` en moins de $5\text{ ms}$ et libérer la Goroutine hôte sans saturer le processeur.
 2. **Scénario `TestMemoryQuotaBreach` :**
    Exécution d'un script allouant récursivement des tableaux géants (`let a = []; while(true) a.push(new Uint8Array(1024*1024));`). L'isolat doit être stoppé net dès le franchissement de `MaxMemoryBytes` sans impacter les autres isolats du processus.
-3. **Scénario `TestZeroCopyBufferRoundtrip` :**
-   Transmission d'un tranche d'octets Go `[]byte` de 16 Mo via `Buffer.from(slice)`. Modification directe d'un octet en JavaScript (`buf[0] = 0xAA`). Vérification immédiate que `slice[0] == 0xAA` en mémoire Go sans aucune allocation mémoire intermédiaire (`testing.AllocsPerRun == 0`).
-4. **Scénario `TestAsyncHttpNetpoller` :**
+3. **Scénario `TestAsyncHttpNetpoller` :**
    Exécution simultanée de 1 000 requêtes `fetch()` asynchrones vers un serveur HTTP Go local. Les promesses JavaScript doivent être résolues sans bloquer la boucle d'événements, avec une consommation mémoire linéaire et sans dépassement du nombre de threads système.
-5. **Scénario `TestMultiTenant10kConcurrency` :**
+4. **Scénario `TestMultiTenant10kConcurrency` :**
    Instanciation de 10 000 isolats exécutant chacun une suite de calculs JSON et d'opérations d'horodatage. Contrôle sous `runtime.ReadMemStats` : l'occupation mémoire totale ne doit pas excéder $5\text{ Go}$ et aucun blocage de l'ordonnanceur Go ne doit survenir.
 
 ---
@@ -399,4 +358,3 @@ L'abaissement (*lowering*) du code source C++ de V8 ne s'effectue pas par une te
 3. **Pipeline Mécanique C2SIMD / Sgoiter :**
    $$\text{C++ V8 Upstream} \xrightarrow{\text{clang++}} \text{LLVM IR (SSA)} \xrightarrow{\text{sgoiter}} \text{Go 1.27 Register ABI (SIMD, 0-CGO)}$$
 4. **Parité Bit-Exacte & Zéro Échappement :** Chaque composant transpilé est soumis au protocole canonique de dogfooding en 6 étapes ([`spec/PROTOCOLE_DOGFOODING.md`](file:///devhoros/c2simd/sgoiter/spec/PROTOCOLE_DOGFOODING.md)), validé contre oracle binaire compilé avec `gcc -O2` sous `GOEXPERIMENT=simd go test -race`.
-

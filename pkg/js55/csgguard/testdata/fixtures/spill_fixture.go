@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package csgfixtures
 
 // Live10 — dix valeurs 64 bits vivantes dans la boucle. Contrainte C3 : le cadre

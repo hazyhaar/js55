@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine
 
@@ -192,12 +192,16 @@ func (vm *VM) InstallReflectBuiltins() {
 		if o.frozen {
 			return False, nil
 		}
+		if !proto.IsNull() && !proto.IsObject() {
+			return Undefined, fmt.Errorf("TypeError: Object prototype may only be an Object or null")
+		}
+		o = vm.heap.Mutable(target.Handle())
+		if o == nil {
+			return False, nil
+		}
 		if proto.IsNull() {
 			o.proto = NoHandle
 			return True, nil
-		}
-		if !proto.IsObject() {
-			return Undefined, fmt.Errorf("TypeError: Object prototype may only be an Object or null")
 		}
 		o.proto = proto.Handle()
 		return True, nil
@@ -224,7 +228,7 @@ func (vm *VM) InstallReflectBuiltins() {
 		if err := vm.requireReflectTarget(target, "Reflect.preventExtensions"); err != nil {
 			return Undefined, err
 		}
-		if o := vm.heap.Get(target.Handle()); o != nil {
+		if o := vm.heap.Mutable(target.Handle()); o != nil {
 			o.frozen = true
 		}
 		return True, nil

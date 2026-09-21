@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 // Package parser construit un arbre syntaxique ECMAScript 2020 à partir d'une
 // source, par descente récursive.
 //
@@ -41,14 +42,19 @@ type Options struct {
 	Module bool
 	// Strict force le mode strict sur une source de script.
 	Strict bool
+	// TypeScript active l'effacement syntaxique des annotations de type
+	// TypeScript. Les types sont consommés et rejetés : l'arbre produit ne
+	// contient que la sémantique d'exécution JavaScript.
+	TypeScript bool
 }
 
 type parser struct {
 	lx  *lexer.Lexer
 	tok lexer.Token
 
-	strict bool
-	module bool
+	strict     bool
+	module     bool
+	typescript bool
 
 	// Contexte grammatical. yield et await ne sont des opérateurs que dans les
 	// fonctions qui les admettent ; ailleurs ce sont des identifiants.
@@ -78,10 +84,11 @@ const maxDepth = 800
 // aucune entrée, valide ou non, ne provoque de panique.
 func Parse(src string, opt Options) (prog *ast.Program, err error) {
 	p := &parser{
-		lx:     lexer.New(src),
-		strict: opt.Strict || opt.Module,
-		module: opt.Module,
-		parens: map[ast.Expr]bool{},
+		lx:         lexer.New(src),
+		strict:     opt.Strict || opt.Module,
+		module:     opt.Module,
+		typescript: opt.TypeScript,
+		parens:     map[ast.Expr]bool{},
 	}
 
 	defer func() {
@@ -104,6 +111,12 @@ func Parse(src string, opt Options) (prog *ast.Program, err error) {
 		Body:   body,
 		Module: opt.Module,
 	}, nil
+}
+
+// ParseWithOptions est l'entrée canonique lorsque les options doivent être
+// propagées explicitement. Elle ne fait que déléguer à Parse.
+func ParseWithOptions(src string, opt Options) (*ast.Program, error) {
+	return Parse(src, opt)
 }
 
 // ─── Machinerie ─────────────────────────────────────────────────────────────
@@ -249,6 +262,350 @@ func (p *parser) semicolon() {
 		return
 	}
 	p.fail(fmt.Sprintf("point-virgule attendu, %s trouvé", p.tok.Kind))
+}
+
+// ─── Effacement des types TypeScript ────────────────────────────────────────
+
+// skipTypeAnnotation consomme une annotation de type après « : ».
+func (p *parser) skipTypeAnnotation() {
+	if !p.typescript || !p.is(lexer.Colon) {
+		return
+	}
+	p.advance()
+	p.skipType()
+}
+
+// skipType consomme une expression de type jusqu'à un délimiteur de fin au
+// niveau zéro.
+//
+// La grammaire des types n'est pas reproduite : les types sont lus comme un
+// flux équilibré et rejetés. Quatre profondeurs sont suivies séparément afin
+// que la parenthèse, l'accolade, le crochet et le chevron d'un type imbriqué ne
+// soient jamais confondus avec un délimiteur de l'expression environnante.
+func (p *parser) skipType() {
+	p.skipTypeCustom(false)
+}
+
+func (p *parser) skipTypeAs() {
+	p.skipTypeCustom(true)
+}
+
+func isPrimitiveTypeName(name string) bool {
+	switch name {
+	case "number", "string", "boolean", "any", "unknown", "never",
+		"void", "symbol", "bigint", "object", "undefined", "null":
+		return true
+	}
+	return false
+}
+
+func isContinuationOp(k lexer.Kind) bool {
+	switch k {
+	case lexer.Or, lexer.And, lexer.Colon, lexer.Assign, lexer.Comma, lexer.Question, lexer.Lt:
+		return true
+	}
+	return false
+}
+
+func (p *parser) skipTypeCustom(inAs bool) {
+	depthParen := 0
+	depthBrace := 0
+	depthBracket := 0
+	depthAngle := 0
+	consumedAny := false
+
+	prev := lexer.Colon
+	prevWord := ""
+
+	for !p.is(lexer.EOF) {
+		atTop := depthParen == 0 && depthBrace == 0 && depthBracket == 0 && depthAngle == 0
+
+		if atTop {
+			// Un saut de ligne franchi au niveau zéro termine l'annotation ou
+			// la déclaration de type (ASI) sauf si le lexème précédent ou suivant
+			// est un opérateur de continuation.
+			if consumedAny && p.tok.NewlineBefore && !isContinuationOp(prev) {
+				switch p.tok.Kind {
+				case lexer.Or, lexer.And, lexer.Question, lexer.LBracket:
+					// continuation autorisée
+				default:
+					if p.tok.Kind != lexer.Keyword || p.tok.Value != "extends" {
+						return
+					}
+				}
+			}
+
+			// Dans « expr as Type », seul le ternaire JS ou les opérateurs
+			// courts-circuits au niveau zéro terminent le type. Les unions (|) et
+			// intersections (&) font partie intégrante du type.
+			if inAs && consumedAny {
+				switch p.tok.Kind {
+				case lexer.Question, lexer.AndAnd, lexer.OrOr, lexer.QuestionQuestion:
+					return
+				}
+			}
+
+			// « in », « of », « instanceof » terminent une annotation ou une
+			// expression au niveau zéro.
+			if p.tok.Kind == lexer.Keyword && (p.tok.Value == "in" || p.tok.Value == "instanceof" || (inAs && p.tok.Value == "as")) {
+				return
+			}
+			if p.tok.Kind == lexer.Ident && p.tok.Value == "of" {
+				return
+			}
+		}
+
+		switch p.tok.Kind {
+		case lexer.LParen:
+			depthParen++
+		case lexer.RParen:
+			if atTop {
+				return
+			}
+			depthParen--
+		case lexer.LBrace:
+			if atTop && !startsTypeAfter(prev) {
+				return
+			}
+			depthBrace++
+		case lexer.RBrace:
+			if atTop {
+				return
+			}
+			depthBrace--
+		case lexer.LBracket:
+			depthBracket++
+		case lexer.RBracket:
+			if atTop {
+				return
+			}
+			depthBracket--
+		case lexer.Lt:
+			if atTop {
+				if isPrimitiveTypeName(prevWord) || !p.hasMatchingClosingAngle() {
+					return
+				}
+			}
+			depthAngle++
+		case lexer.Gt:
+			if depthAngle > 0 {
+				depthAngle--
+			} else if atTop {
+				return
+			}
+		case lexer.Ge:
+			if depthAngle > 0 {
+				depthAngle--
+				if depthAngle == 0 {
+					pos := p.tok.Pos
+					pos.Col++
+					pos.Offset++
+					p.tok = lexer.Token{Kind: lexer.Assign, Value: "=", Pos: pos}
+					return
+				}
+			} else if atTop {
+				return
+			}
+		case lexer.Shr:
+			if depthAngle > 0 {
+				if depthAngle >= 2 {
+					depthAngle -= 2
+				} else {
+					depthAngle = 0
+				}
+			} else if atTop {
+				return
+			}
+		case lexer.ShrAssign:
+			if depthAngle > 0 {
+				if depthAngle >= 2 {
+					depthAngle -= 2
+				} else {
+					depthAngle = 0
+				}
+				if depthAngle == 0 {
+					pos := p.tok.Pos
+					pos.Col += 2
+					pos.Offset += 2
+					p.tok = lexer.Token{Kind: lexer.Assign, Value: "=", Pos: pos}
+					return
+				}
+			} else if atTop {
+				return
+			}
+		case lexer.UShr:
+			if depthAngle > 0 {
+				if depthAngle >= 3 {
+					depthAngle -= 3
+				} else {
+					depthAngle = 0
+				}
+			} else if atTop {
+				return
+			}
+		case lexer.UShrAssign:
+			if depthAngle > 0 {
+				if depthAngle >= 3 {
+					depthAngle -= 3
+				} else {
+					depthAngle = 0
+				}
+				if depthAngle == 0 {
+					pos := p.tok.Pos
+					pos.Col += 3
+					pos.Offset += 3
+					p.tok = lexer.Token{Kind: lexer.Assign, Value: "=", Pos: pos}
+					return
+				}
+			} else if atTop {
+				return
+			}
+		case lexer.Comma, lexer.Assign:
+			if atTop {
+				return
+			}
+		case lexer.Semicolon:
+			if atTop {
+				return
+			}
+			if depthAngle > 0 {
+				p.fail("« > » attendu pour fermer le type générique")
+			}
+		case lexer.Arrow:
+			if atTop && prev != lexer.RParen {
+				return
+			}
+		case lexer.Plus, lexer.Minus, lexer.Star, lexer.Slash, lexer.Percent,
+			lexer.StarStar, lexer.EqEq, lexer.NotEq, lexer.EqEqEq, lexer.NotEqEq,
+			lexer.Le, lexer.QuestionDot,
+			lexer.QuestionQuestion, lexer.AndAnd, lexer.OrOr,
+			lexer.Shl, lexer.Xor:
+			if atTop {
+				return
+			}
+		}
+
+		prev = p.tok.Kind
+		if p.tok.Kind == lexer.Ident || p.tok.Kind == lexer.Keyword {
+			prevWord = p.tok.Value
+		} else {
+			prevWord = ""
+		}
+		consumedAny = true
+		p.advance()
+	}
+	if inAs && !consumedAny {
+		p.fail("type attendu après « as »")
+	}
+	if depthAngle > 0 {
+		p.fail("« > » attendu pour fermer le type générique")
+	}
+	if depthParen > 0 || depthBrace > 0 || depthBracket > 0 {
+		p.fail("délimiteur non fermé dans le type")
+	}
+}
+
+// hasMatchingClosingAngle examine en spéculation si le « < » courant au niveau
+// zéro est refermé par un chevron fermant (« > », « >> », « >>> ») avant la fin
+// de l'instruction ou une assignation.
+func (p *parser) hasMatchingClosingAngle() bool {
+	save := p.lx.Save()
+	tok := p.tok
+	defer func() {
+		p.lx.Restore(save)
+		p.tok = tok
+	}()
+
+	p.advance()
+	depth := 1
+	for !p.is(lexer.EOF) && depth > 0 {
+		switch p.tok.Kind {
+		case lexer.Semicolon, lexer.Assign, lexer.EOF:
+			return false
+		case lexer.Lt:
+			depth++
+		case lexer.Gt:
+			depth--
+		case lexer.Ge:
+			depth--
+		case lexer.Shr:
+			depth -= 2
+		case lexer.ShrAssign:
+			depth -= 2
+		case lexer.UShr:
+			depth -= 3
+		case lexer.UShrAssign:
+			depth -= 3
+		}
+		if depth <= 0 {
+			return true
+		}
+		p.advance()
+	}
+	return depth <= 0
+}
+
+// startsTypeAfter indique qu'une accolade rencontrée au niveau zéro ouvre un
+// type objet plutôt que le corps d'une fonction ou d'une classe.
+func startsTypeAfter(k lexer.Kind) bool {
+	switch k {
+	case lexer.Colon, lexer.Comma, lexer.Lt, lexer.Or, lexer.And, lexer.Assign,
+		lexer.Question, lexer.Arrow:
+		return true
+	}
+	return false
+}
+
+// skipTypeParams consomme les paramètres génériques « <T, U extends V> ».
+func (p *parser) skipTypeParams() {
+	if !p.typescript || !p.is(lexer.Lt) {
+		return
+	}
+	depth := 1
+	p.advance()
+	for !p.is(lexer.EOF) && depth > 0 {
+		switch p.tok.Kind {
+		case lexer.Lt:
+			depth++
+		case lexer.Gt:
+			depth--
+		case lexer.Shr:
+			if depth >= 2 {
+				depth -= 2
+			} else {
+				depth = 0
+			}
+		case lexer.UShr:
+			if depth >= 3 {
+				depth -= 3
+			} else {
+				depth = 0
+			}
+		}
+		p.advance()
+	}
+}
+
+// skipBalancedBraces consomme un bloc équilibré d'accolades, accolade
+// ouvrante comprise.
+func (p *parser) skipBalancedBraces() {
+	if !p.is(lexer.LBrace) {
+		return
+	}
+	depth := 1
+	p.advance()
+	for !p.is(lexer.EOF) && depth > 0 {
+		switch p.tok.Kind {
+		case lexer.LBrace:
+			depth++
+		case lexer.RBrace:
+			depth--
+		}
+		p.advance()
+	}
+	if depth > 0 {
+		p.fail("« } » attendu pour fermer le bloc")
+	}
 }
 
 // ─── Expressions ────────────────────────────────────────────────────────────
@@ -456,6 +813,21 @@ func (p *parser) parseConditional() ast.Expr {
 	test := p.parseBinary(0)
 	if !p.is(lexer.Question) {
 		return test
+	}
+	// En TypeScript, « y?: T » est un paramètre optionnel, non un opérande
+	// gauche de ternaire. Un « ? » immédiatement suivi de « : », d'une virgule
+	// ou d'une parenthèse fermante annonce l'annotation.
+	if p.typescript {
+		save := p.lx.Save()
+		tk := p.tok
+		p.advance()
+		optional := p.is(lexer.Colon) || p.is(lexer.Comma) || p.is(lexer.RParen) ||
+			p.is(lexer.Assign) || p.is(lexer.RBrace)
+		p.lx.Restore(save)
+		p.tok = tk
+		if optional {
+			return test
+		}
 	}
 	p.advance()
 	p.regexpHere()
@@ -713,6 +1085,49 @@ func (p *parser) parseCallOrMember(allowCall bool) ast.Expr {
 		case p.is(lexer.NoSubTemplate) || p.is(lexer.TemplateHead):
 			quasi := p.parseTemplate()
 			expr = &ast.TaggedTemplate{Base: ast.Base{P: expr.Pos()}, Tag: expr, Quasi: quasi}
+
+		case p.typescript && p.is(lexer.Lt) && !p.tok.NewlineBefore:
+			// Arguments de type générique : « fn<T>(args) » ou « new Cls<T>(args) ».
+			// Seuls les chevrons refermés suivis immédiatement de « ( » ou d'un gabarit sont consommés ;
+			// une comparaison « a < b » ordinaire est préservée par restauration du lexer.
+			save := p.lx.Save()
+			tk := p.tok
+			p.advance()
+			depth := 1
+			validGeneric := false
+			for !p.is(lexer.EOF) && depth > 0 {
+				switch p.tok.Kind {
+				case lexer.Lt:
+					depth++
+				case lexer.Gt:
+					depth--
+				case lexer.Shr:
+					depth -= 2
+				case lexer.UShr:
+					depth -= 3
+				}
+				p.advance()
+			}
+			if depth <= 0 && (p.is(lexer.LParen) || p.is(lexer.NoSubTemplate) || p.is(lexer.TemplateHead)) {
+				validGeneric = true
+			}
+			if validGeneric {
+				continue
+			}
+			p.lx.Restore(save)
+			p.tok = tk
+			return expr
+
+		case p.typescript && p.is(lexer.Not) && !p.tok.NewlineBefore:
+			// Assertion de non-nullité : « expr! ». Le « ! » est effacé.
+			p.advance()
+			continue
+
+		case p.typescript && p.isName() && p.tok.Value == "as" && !p.tok.NewlineBefore:
+			// Assertion de type : « expr as Type ». Le type est effacé.
+			p.advance()
+			p.skipTypeAs()
+			continue
 
 		default:
 			if optionalSeen {

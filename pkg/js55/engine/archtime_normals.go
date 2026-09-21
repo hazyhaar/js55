@@ -1,5 +1,4 @@
-//go:build archtime_geometry
-
+// SPDX-License-Identifier: BUSL-1.1
 package engine
 
 import (
@@ -10,7 +9,7 @@ import (
 	"math"
 	"unsafe"
 
-	"github.com/hazyhaar/c2pkg/c2archtsim/geometry"
+	geometry "github.com/hazyhaar/js55/pkg/c2archtsim/geometry"
 )
 
 const archtimeNormalsWork = uint64(2_000_000)

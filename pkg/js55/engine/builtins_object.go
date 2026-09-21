@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine
 
@@ -319,6 +319,10 @@ func (vm *VM) InstallObjectBuiltins() {
 				if o.proto != newProto {
 					return Undefined, fmt.Errorf("TypeError: Cannot set prototype of non-extensible object")
 				}
+				return Undefined, nil
+			}
+			o = vm.heap.Mutable(this.Handle())
+			if o == nil {
 				return Undefined, nil
 			}
 			o.proto = newProto
@@ -781,6 +785,10 @@ func (vm *VM) InstallObjectBuiltins() {
 				}
 				return args[0], nil
 			}
+			o = vm.heap.Mutable(args[0].Handle())
+			if o == nil {
+				return args[0], nil
+			}
 			if args[1] == Null {
 				o.proto = NoHandle
 			} else {
@@ -1013,7 +1021,7 @@ func (vm *VM) InstallObjectBuiltins() {
 			}
 			v := args[0]
 			if v.IsObject() {
-				if o := vm.heap.Get(v.Handle()); o != nil {
+				if o := vm.heap.Mutable(v.Handle()); o != nil {
 					o.frozen = true
 					o.ensureAttrs()
 					for i := range o.attrs {
@@ -1052,7 +1060,7 @@ func (vm *VM) InstallObjectBuiltins() {
 			}
 			v := args[0]
 			if v.IsObject() {
-				if o := vm.heap.Get(v.Handle()); o != nil {
+				if o := vm.heap.Mutable(v.Handle()); o != nil {
 					o.frozen = true
 					o.ensureAttrs()
 					for i := range o.attrs {
@@ -1085,7 +1093,7 @@ func (vm *VM) InstallObjectBuiltins() {
 			}
 			v := args[0]
 			if v.IsObject() {
-				if o := vm.heap.Get(v.Handle()); o != nil {
+				if o := vm.heap.Mutable(v.Handle()); o != nil {
 					o.frozen = true
 				}
 			}

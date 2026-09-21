@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 package c2strclass
 
 // Oracle de parité du protocole P4 (/devhoros/pkg/js55/PLAN_MOTEUR.md §J2.3).

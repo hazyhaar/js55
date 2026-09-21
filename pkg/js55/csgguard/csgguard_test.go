@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 // Package csgguard mesure les contraintes compilateur opposables au moteur js55.
 //
 // Ces contraintes décrivent un comportement du compilateur Go, pas une propriété

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package csgfixtures
 
 // SwitchDense — 16 cas contigus 0..15. Doit recevoir une table de saut.

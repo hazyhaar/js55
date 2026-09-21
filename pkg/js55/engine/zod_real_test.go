@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine
 
@@ -83,4 +83,3 @@ func TestZodDifferentialVsNode(t *testing.T) {
 		t.Errorf("%s : %s\n  js55 %q %v\n  node %+v", c, why, mine, err, got.Results[i])
 	}
 }
-

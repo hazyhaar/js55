@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package engine_test
 
 import (
@@ -30,7 +31,7 @@ func loadThree(t *testing.T, iso *js55.Isolate) {
 	if err != nil {
 		t.Fatalf("read three: %v", err)
 	}
-	_, err = iso.Eval(context.Background(), string(b))
+	_, err = iso.EvalContext(context.Background(), string(b))
 	if err != nil {
 		t.Fatalf("eval three: %v", err)
 	}
@@ -54,7 +55,7 @@ func smallNormalOracle() []float32 {
 
 func finiteNormals(t *testing.T, iso *js55.Isolate) {
 	t.Helper()
-	res, err := iso.Eval(context.Background(), `
+	res, err := iso.EvalContext(context.Background(), `
 (function(){
   var n = geom.getAttribute("normal");
   if (!n || !n.array || n.array.length < 3) return 0;
@@ -72,7 +73,7 @@ func finiteNormals(t *testing.T, iso *js55.Isolate) {
 
 func readNormalFloats(t *testing.T, iso *js55.Isolate) []float32 {
 	t.Helper()
-	res, err := iso.Eval(context.Background(), `geom.getAttribute("normal").array`)
+	res, err := iso.EvalContext(context.Background(), `geom.getAttribute("normal").array`)
 	if err != nil {
 		t.Fatalf("normal array: %v", err)
 	}
@@ -117,11 +118,11 @@ func triangleNormalOracle(nverts int) []float32 {
 
 func fillRepeatedTriangle(t *testing.T, iso *js55.Isolate) {
 	t.Helper()
-	posVal, err := iso.Eval(context.Background(), `geom.getAttribute("position").array`)
+	posVal, err := iso.EvalContext(context.Background(), `geom.getAttribute("position").array`)
 	if err != nil {
 		t.Fatalf("position array: %v", err)
 	}
-	idxVal, err := iso.Eval(context.Background(), `geom.getIndex().array`)
+	idxVal, err := iso.EvalContext(context.Background(), `geom.getIndex().array`)
 	if err != nil {
 		t.Fatalf("index array: %v", err)
 	}
@@ -149,7 +150,7 @@ func kernelLinked(iso *js55.Isolate) bool {
 
 func normalBytes(t *testing.T, iso *js55.Isolate) []byte {
 	t.Helper()
-	res, err := iso.Eval(context.Background(), `geom.getAttribute("normal").array`)
+	res, err := iso.EvalContext(context.Background(), `geom.getAttribute("normal").array`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,11 +167,11 @@ func TestArchtimeNormalsON(t *testing.T) {
 	iso, _ := js55.NewIsolate(js55.Config{GasLimit: 1e9})
 	iso.VM().DisableArchtimeNormals = false
 	loadThree(t, iso)
-	if _, err := iso.Eval(context.Background(), smallGeomSetup()); err != nil {
+	if _, err := iso.EvalContext(context.Background(), smallGeomSetup()); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 
-	res, err := iso.Eval(context.Background(), "geom.computeVertexNormals();")
+	res, err := iso.EvalContext(context.Background(), "geom.computeVertexNormals();")
 	if err != nil {
 		t.Fatalf("fresh error: %v", err)
 	}
@@ -187,7 +188,7 @@ func TestArchtimeNormalsON(t *testing.T) {
 		assertNeedsUpdate(t, iso, 1)
 	}
 
-	res, err = iso.Eval(context.Background(), "geom.computeVertexNormals();")
+	res, err = iso.EvalContext(context.Background(), "geom.computeVertexNormals();")
 	if err != nil {
 		t.Fatalf("oldnormal error: %v", err)
 	}
@@ -209,10 +210,10 @@ func TestArchtimeNormalsOFF(t *testing.T) {
 	iso, _ := js55.NewIsolate(js55.Config{GasLimit: 1e9})
 	iso.VM().DisableArchtimeNormals = true
 	loadThree(t, iso)
-	if _, err := iso.Eval(context.Background(), smallGeomSetup()); err != nil {
+	if _, err := iso.EvalContext(context.Background(), smallGeomSetup()); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	res, err := iso.Eval(context.Background(), "geom.computeVertexNormals();")
+	res, err := iso.EvalContext(context.Background(), "geom.computeVertexNormals();")
 	if err != nil {
 		t.Fatalf("fresh generic: %v", err)
 	}
@@ -282,14 +283,14 @@ var geom = new THREE.BufferGeometry();
 geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(%d), 3));
 geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 `, terrainNverts*3, terrainNidx)
-	if _, err := iso.Eval(context.Background(), setup); err != nil {
+	if _, err := iso.EvalContext(context.Background(), setup); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	posVal, err := iso.Eval(context.Background(), `geom.getAttribute("position").array`)
+	posVal, err := iso.EvalContext(context.Background(), `geom.getAttribute("position").array`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	idxVal, err := iso.Eval(context.Background(), `geom.getIndex().array`)
+	idxVal, err := iso.EvalContext(context.Background(), `geom.getIndex().array`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +307,7 @@ geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 	armed = true
 	gas0 := iso.VM().GasLeft
 	t0 := time.Now()
-	_, err = iso.Eval(context.Background(), "geom.computeVertexNormals();")
+	_, err = iso.EvalContext(context.Background(), "geom.computeVertexNormals();")
 	if err == nil || !strings.Contains(err.Error(), "simulate interrupt") {
 		t.Fatalf("expected simulate interrupt error, got %v", err)
 	}
@@ -317,7 +318,7 @@ geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 
 	t1 := time.Now()
 	gas1 := iso.VM().GasLeft
-	res, err := iso.Eval(context.Background(), "geom.computeVertexNormals();")
+	res, err := iso.EvalContext(context.Background(), "geom.computeVertexNormals();")
 	if err != nil {
 		t.Fatalf("resume failed: %v", err)
 	}
@@ -349,14 +350,14 @@ func testArchtimeNormalsInterruptionOFF(t *testing.T) {
 		},
 	})
 	loadThree(t, iso)
-	if _, err := iso.Eval(context.Background(), smallGeomSetup()); err != nil {
+	if _, err := iso.EvalContext(context.Background(), smallGeomSetup()); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if iso.VM().Interrupted == nil {
 		t.Fatal("Interrupted is nil")
 	}
 	iso.VM().Interrupted.Store(true)
-	_, err := iso.Eval(context.Background(), "geom.computeVertexNormals();")
+	_, err := iso.EvalContext(context.Background(), "geom.computeVertexNormals();")
 	iso.VM().Interrupted.Store(false)
 	if err == nil || !strings.Contains(err.Error(), "interrompue") {
 		t.Fatalf("expected interrupt error, got %v", err)
@@ -364,7 +365,7 @@ func testArchtimeNormalsInterruptionOFF(t *testing.T) {
 	t.Logf("OFF interrupt yieldcalls=%d Accepted=%d Rejected=%d err=%v", checkCount, iso.VM().KernelStats.Accepted, iso.VM().KernelStats.Rejected, err)
 
 	t0 := time.Now()
-	res, err := iso.Eval(context.Background(), "geom.computeVertexNormals();")
+	res, err := iso.EvalContext(context.Background(), "geom.computeVertexNormals();")
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
@@ -381,7 +382,7 @@ func testArchtimeNormalsInterruptionOFF(t *testing.T) {
 
 func assertNeedsUpdate(t *testing.T, iso *js55.Isolate, wantVersion float64) {
 	t.Helper()
-	res, err := iso.Eval(context.Background(), `
+	res, err := iso.EvalContext(context.Background(), `
 (function(){
   var n = geom.getAttribute("normal");
   if (Object.prototype.hasOwnProperty.call(n, "needsUpdate")) return -1;
@@ -422,15 +423,15 @@ func TestArchtimeNormalsON_Guards(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := iso.Eval(context.Background(), smallGeomSetup()); err != nil {
+			if _, err := iso.EvalContext(context.Background(), smallGeomSetup()); err != nil {
 				t.Fatalf("setup: %v", err)
 			}
-			if _, err := iso.Eval(context.Background(), tc.mutate); err != nil {
+			if _, err := iso.EvalContext(context.Background(), tc.mutate); err != nil {
 				t.Fatalf("mutate: %v", err)
 			}
 			beforeA := iso.VM().KernelStats.Accepted
 			beforeR := iso.VM().KernelStats.Rejected
-			if _, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`); err != nil {
+			if _, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`); err != nil {
 				t.Logf("mutate compute err (generic may throw): %v", err)
 			}
 			t.Logf("%s after mutate Accepted=%d Rejected=%d (before A=%d R=%d)", tc.name, iso.VM().KernelStats.Accepted, iso.VM().KernelStats.Rejected, beforeA, beforeR)
@@ -438,13 +439,13 @@ func TestArchtimeNormalsON_Guards(t *testing.T) {
 				t.Fatalf("guard rejection unobserved")
 			}
 			afterA := iso.VM().KernelStats.Accepted
-			if _, err := iso.Eval(context.Background(), tc.restore); err != nil {
+			if _, err := iso.EvalContext(context.Background(), tc.restore); err != nil {
 				t.Fatalf("restore: %v", err)
 			}
-			if _, err := iso.Eval(context.Background(), smallGeomSetup()); err != nil {
+			if _, err := iso.EvalContext(context.Background(), smallGeomSetup()); err != nil {
 				t.Fatalf("setup2: %v", err)
 			}
-			res, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+			res, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 			if err != nil {
 				t.Fatalf("restored compute: %v", err)
 			}
@@ -470,12 +471,12 @@ func TestArchtimeNormalsON_HostNonMutating(t *testing.T) {
 	})
 	iso.VM().DisableArchtimeNormals = false
 	loadThree(t, iso)
-	if _, err := iso.Eval(context.Background(), smallGeomSetup()); err != nil {
+	if _, err := iso.EvalContext(context.Background(), smallGeomSetup()); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	beforeR := iso.VM().KernelStats.Rejected
 	beforeA := iso.VM().KernelStats.Accepted
-	if _, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`); err != nil {
+	if _, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`); err != nil {
 		t.Logf("generic after host-mutating reject: %v", err)
 	}
 	t.Logf("mutant host Accepted=%d Rejected=%d", iso.VM().KernelStats.Accepted, iso.VM().KernelStats.Rejected)
@@ -486,11 +487,11 @@ func TestArchtimeNormalsON_HostNonMutating(t *testing.T) {
 		t.Fatal("mutant host must not accept")
 	}
 	iso.VM().HostNonMutating = true
-	if _, err := iso.Eval(context.Background(), smallGeomSetup()); err != nil {
+	if _, err := iso.EvalContext(context.Background(), smallGeomSetup()); err != nil {
 		t.Fatalf("setup2: %v", err)
 	}
 	afterA := iso.VM().KernelStats.Accepted
-	res, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+	res, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 	if err != nil {
 		t.Fatalf("restored compute: %v", err)
 	}
@@ -505,7 +506,7 @@ func TestArchtimeNormalsON_HostNonMutating(t *testing.T) {
 
 func normalPresent(t *testing.T, iso *js55.Isolate) bool {
 	t.Helper()
-	res, err := iso.Eval(context.Background(), `(function(){ var n = geom.getAttribute("normal"); return n ? 1 : 0; })()`)
+	res, err := iso.EvalContext(context.Background(), `(function(){ var n = geom.getAttribute("normal"); return n ? 1 : 0; })()`)
 	if err != nil {
 		t.Fatalf("normal present: %v", err)
 	}
@@ -531,7 +532,7 @@ func TestArchtimeNormalsON_B2RefuseBeforePublish(t *testing.T) {
 	}
 	iso.VM().DisableArchtimeNormals = false
 	loadThree(t, iso)
-	if _, err := iso.Eval(context.Background(), mediumIndexedSetup(nverts, nidx)); err != nil {
+	if _, err := iso.EvalContext(context.Background(), mediumIndexedSetup(nverts, nidx)); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	fillRepeatedTriangle(t, iso)
@@ -542,7 +543,7 @@ func TestArchtimeNormalsON_B2RefuseBeforePublish(t *testing.T) {
 	beforeA := iso.VM().KernelStats.Accepted
 	beforeR := iso.VM().KernelStats.Rejected
 	iso.VM().GasLeft = 128
-	_, err = iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+	_, err = iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 	iso.VM().GasLeft = 1e9
 	if err == nil {
 		t.Fatal("expected refusal with tiny gas budget")
@@ -564,7 +565,7 @@ func TestArchtimeNormalsON_B2RefuseBeforePublish(t *testing.T) {
 	if normalPresent(t, iso) {
 		t.Fatal("retry must not precreate normal")
 	}
-	res, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+	res, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 	if err != nil {
 		t.Fatalf("retry: %v", err)
 	}
@@ -588,7 +589,7 @@ func TestArchtimeNormalsON_B2CtorThenNoPublish(t *testing.T) {
 	}
 	iso.VM().DisableArchtimeNormals = false
 	loadThree(t, iso)
-	if _, err := iso.Eval(context.Background(), mediumIndexedSetup(nverts, nidx)); err != nil {
+	if _, err := iso.EvalContext(context.Background(), mediumIndexedSetup(nverts, nidx)); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	fillRepeatedTriangle(t, iso)
@@ -615,7 +616,7 @@ func TestArchtimeNormalsON_B2CtorThenNoPublish(t *testing.T) {
 	stack0 := iso.VM().Heap().StackLen()
 	beforeA := iso.VM().KernelStats.Accepted
 	armed = true
-	_, err = iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+	_, err = iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 	armed = false
 	h.QuotaTracker = orig
 	t.Logf("B2 ctor-quota err=%v Accepted=%d present=%v sawLarge=%v stack=%d yielding=%v", err, iso.VM().KernelStats.Accepted, normalPresent(t, iso), sawLarge, iso.VM().Heap().StackLen(), iso.VM().Yielding())
@@ -637,7 +638,7 @@ func TestArchtimeNormalsON_B2CtorThenNoPublish(t *testing.T) {
 	if iso.VM().Yielding() {
 		t.Fatal("yielding after ctor error")
 	}
-	res, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+	res, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 	if err != nil {
 		t.Fatalf("retry: %v", err)
 	}
@@ -669,14 +670,14 @@ func b3MutatingCompute(t *testing.T, disableNormals bool, nverts, nidx int, muta
 	}
 	iso.VM().DisableArchtimeNormals = disableNormals
 	loadThree(t, iso)
-	if _, err := iso.Eval(context.Background(), mediumIndexedSetup(nverts, nidx)); err != nil {
+	if _, err := iso.EvalContext(context.Background(), mediumIndexedSetup(nverts, nidx)); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	fillRepeatedTriangle(t, iso)
 	if normalPresent(t, iso) {
 		t.Fatal("setup must not precreate normal")
 	}
-	posVal, err := iso.Eval(context.Background(), `geom.getAttribute("position").array`)
+	posVal, err := iso.EvalContext(context.Background(), `geom.getAttribute("position").array`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -690,7 +691,7 @@ func b3MutatingCompute(t *testing.T, disableNormals bool, nverts, nidx int, muta
 		t.Fatal("fixture already carries mutation sentinel")
 	}
 	iso.VM().GasLeft = 10e9
-	if _, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`); err != nil {
+	if _, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`); err != nil {
 		t.Logf("compute err: %v", err)
 	}
 	if callbackCalls < 1 {
@@ -727,7 +728,7 @@ func TestArchtimeNormalsON_B3ViewMutation(t *testing.T) {
 	}
 
 	binary.LittleEndian.PutUint32(posWin[0:4], orig0)
-	if _, err := iso.Eval(context.Background(), `delete geom.attributes.normal;`); err != nil {
+	if _, err := iso.EvalContext(context.Background(), `delete geom.attributes.normal;`); err != nil {
 		t.Fatalf("drop generic normal: %v", err)
 	}
 	if normalPresent(t, iso) {
@@ -742,7 +743,7 @@ func TestArchtimeNormalsON_B3ViewMutation(t *testing.T) {
 	iso.VM().DisableArchtimeNormals = false
 	iso.VM().GasLeft = 10e9
 	afterA := iso.VM().KernelStats.Accepted
-	res, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+	res, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 	if err != nil {
 		t.Fatalf("restored compute: %v", err)
 	}
@@ -758,7 +759,7 @@ func TestArchtimeNormalsON_B3ViewMutation(t *testing.T) {
 	requireNormalOracle(t, iso, triangleNormalOracle(nverts))
 	t.Logf("B3 same-iso restore callbackCallsPur=%d Accepted=%d", callbackCallsPur, iso.VM().KernelStats.Accepted)
 
-	if _, err := iso.Eval(context.Background(), mediumIndexedSetup(nverts, nidx)); err != nil {
+	if _, err := iso.EvalContext(context.Background(), mediumIndexedSetup(nverts, nidx)); err != nil {
 		t.Fatalf("fresh setup: %v", err)
 	}
 	fillRepeatedTriangle(t, iso)
@@ -768,7 +769,7 @@ func TestArchtimeNormalsON_B3ViewMutation(t *testing.T) {
 	iso.VM().GasLeft = 10e9
 	freshA := iso.VM().KernelStats.Accepted
 	purBefore := callbackCallsPur
-	res, err = iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+	res, err = iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 	if err != nil {
 		t.Fatalf("fresh compute: %v", err)
 	}
@@ -817,14 +818,14 @@ var geom = new THREE.BufferGeometry();
 geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(%d), 3));
 geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 `, terrainNverts*3, terrainNidx)
-	if _, err := iso.Eval(context.Background(), setup); err != nil {
+	if _, err := iso.EvalContext(context.Background(), setup); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	posVal, err := iso.Eval(context.Background(), `geom.getAttribute("position").array`)
+	posVal, err := iso.EvalContext(context.Background(), `geom.getAttribute("position").array`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	idxVal, err := iso.Eval(context.Background(), `geom.getIndex().array`)
+	idxVal, err := iso.EvalContext(context.Background(), `geom.getIndex().array`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -841,7 +842,7 @@ geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 	copy(idxWin, idx)
 	armed = true
 	beforeA := iso.VM().KernelStats.Accepted
-	_, err = iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+	_, err = iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 	t.Logf("B3 lie checkpoints=%d injected=%d Accepted=%d Rejected=%d err=%v bits=%08x", checkCount, injected, iso.VM().KernelStats.Accepted, iso.VM().KernelStats.Rejected, err, bits)
 	if checkCount < 1 {
 		t.Fatal("cadence 2M not exercised before lie")
@@ -856,7 +857,7 @@ geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 		t.Fatal("lie must not accept, and must not fall back to generic")
 	}
 	iso.VM().GasLeft = 10e9
-	posVal, err = iso.Eval(context.Background(), `geom.getAttribute("position").array`)
+	posVal, err = iso.EvalContext(context.Background(), `geom.getAttribute("position").array`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -868,7 +869,7 @@ geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 	iso.VM().OnCheckpoint = func() error { return nil }
 	afterA := iso.VM().KernelStats.Accepted
 	t.Logf("B3 lie resume begin Accepted=%d", afterA)
-	res, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+	res, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 	if err != nil {
 		t.Fatalf("resume after lie: %v", err)
 	}

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package isolate
 
@@ -28,7 +28,7 @@ func TestIsolate_POSIXOptional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := iso.Eval(context.Background(), `1+1`)
+	v, err := iso.EvalContext(context.Background(), `1+1`)
 	if err != nil {
 		t.Fatalf("Eval sans POSIX: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestIsolate_POSIXOptional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v2, err := iso2.Eval(context.Background(), `1+1`)
+	v2, err := iso2.EvalContext(context.Background(), `1+1`)
 	if err != nil {
 		t.Fatalf("Eval avec POSIX: %v", err)
 	}

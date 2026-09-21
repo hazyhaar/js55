@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 //go:build js && wasm
 
 // Package browser connects JS55 values to real browser host APIs. It does not

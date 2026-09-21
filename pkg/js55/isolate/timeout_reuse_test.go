@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package isolate
 
 import (
@@ -16,7 +17,7 @@ func TestEvalTimeoutSuccessfulCallsDoNotInterruptNextCall(t *testing.T) {
 			t.Fatalf("evaluation %d: %v", i, err)
 		}
 	}
-	if _, err = iso.Eval(context.Background(), "2+2"); err != nil {
+	if _, err = iso.EvalContext(context.Background(), "2+2"); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: BUSL-1.1
 package engine
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -85,6 +87,11 @@ type VM struct {
 	returnTok      Value
 	tdzTok         Value
 	moduleExports  map[*str.String]Value
+	realm          *RootRealm
+	gasInit        int64
+
+	thisBuf [8]Value
+	newBuf  [2]Value
 
 	// DisableArchtimeGeometry bypasses the optional compiled binding entirely.
 	// Without the archtime_geometry build tag NewVM always starts disabled.
@@ -109,13 +116,167 @@ type microJob struct {
 // d'appel et ses variables globales. Le tas ne peut pas les deviner, et sans
 // cette déclaration une fonction globale ou une fermeture en cours d'appel est
 // collectée sous les pieds de la boucle.
+var globalTombstone = Value(tagGlobalTombstone)
+
 func NewVM(h *Heap) *VM {
+	if h != nil && h.buildingRoot {
+		return newVMWithBuiltins(h)
+	}
+	ensureRootRealm()
+	return newVMFromRealm(h)
+}
+
+func newVMFromRealm(h *Heap) *VM {
+	r := DefaultRootRealm
+	h.realm = r.Heap
+	h.objectProto = r.ObjectProto
+	h.arrayProto = r.ArrayProto
+	h.functionProto = r.FunctionProto
+	vm := &VM{
+		heap:                    h,
+		realm:                   r,
+		GasLeft:                 1 << 32,
+		gasInit:                 1 << 32,
+		DisableArchtimeGeometry: !archtimeGeometryAvailable,
+		MaxDepth:                512,
+		tdzTok:                  Value(tagTDZ),
+		returnTok:               Value(tagReturn),
+	}
+	vm.globalObj = h.NewObject()
+	vm.promiseProto = r.PromiseProto
+	vm.regexpProto = r.RegexpProto
+	vm.generatorProto = r.GeneratorProto
+	vm.thisBuf[0] = ObjectValue(vm.globalObj)
+	vm.thisStack = vm.thisBuf[:1]
+	vm.newBuf[0] = Undefined
+	vm.newStack = vm.newBuf[:1]
+	h.boundVM = vm
+	return vm
+}
+
+func (vm *VM) GlobalObj() Handle {
+	return vm.globalObj
+}
+
+func (vm *VM) SetGasLeft(n int64) {
+	vm.GasLeft = n
+	vm.gasInit = n
+}
+
+func (vm *VM) bindGlobal(key *str.String) (Value, bool) {
+	if key == nil {
+		return Undefined, false
+	}
+	if key.EqualASCII("\x00tdz") {
+		return vm.tdzTok, true
+	}
+	if key.EqualASCII("globalThis") && vm.globalObj != NoHandle {
+		return ObjectValue(vm.globalObj), true
+	}
+	if vm.globals != nil {
+		if v, ok := vm.globals[key]; ok {
+			if v == globalTombstone {
+				return Undefined, false
+			}
+			return v, true
+		}
+		for k, v := range vm.globals {
+			if k == nil || !k.Equal(key) {
+				continue
+			}
+			if v == globalTombstone {
+				return Undefined, false
+			}
+			return v, true
+		}
+	}
+	if vm.realm != nil {
+		if v, ok := vm.realm.lookup(key); ok {
+			return v, true
+		}
+	}
+	return Undefined, false
+}
+
+func (vm *VM) storeGlobal(key *str.String, v Value) {
+	if vm.globals == nil {
+		vm.globals = make(map[*str.String]Value)
+	}
+	vm.globals[key] = v
+}
+
+func (vm *VM) scanRoots(visit func(Value)) {
+	visit(ObjectValue(vm.globalObj))
+	visit(ObjectValue(vm.generatorProto))
+	for _, fr := range vm.frames {
+		visit(ObjectValue(fr.env))
+		visit(fr.callee)
+		visit(fr.newTarget)
+	}
+	for _, v := range vm.globals {
+		visit(v)
+	}
+	for _, v := range vm.moduleExports {
+		visit(v)
+	}
+	for _, v := range vm.thisStack {
+		visit(v)
+	}
+	for _, v := range vm.newStack {
+		visit(v)
+	}
+	for _, e := range vm.safeEnvs {
+		visit(ObjectValue(e))
+	}
+	visit(vm.keep)
+	visit(vm.returnTok)
+	visit(vm.tdzTok)
+	for i := range vm.jobs {
+		for _, v := range vm.jobs[i].hold {
+			visit(v)
+		}
+	}
+}
+
+func (vm *VM) ResetState() {
+	vm.frames = vm.frames[:0]
+	vm.jobs = vm.jobs[:0]
+	vm.safeEnvs = vm.safeEnvs[:0]
+	if vm.heap != nil {
+		vm.heap.TruncateStack(0)
+		vm.heap.DiscardCow()
+		vm.heap.ResetGlobalShell(vm.globalObj)
+	}
+	if cap(vm.thisStack) > 0 {
+		vm.thisStack = vm.thisStack[:1]
+		vm.thisStack[0] = ObjectValue(vm.globalObj)
+	}
+	if cap(vm.newStack) > 0 {
+		vm.newStack = vm.newStack[:1]
+		vm.newStack[0] = Undefined
+	}
+	for k := range vm.globals {
+		delete(vm.globals, k)
+	}
+	for k := range vm.moduleExports {
+		delete(vm.moduleExports, k)
+	}
+	vm.GasLeft = vm.gasInit
+	vm.keep = Undefined
+	vm.genReturning = false
+	vm.yielding.Store(false)
+	vm.retMin = 0
+	vm.stopIP = 0
+}
+
+func newVMWithBuiltins(h *Heap) *VM {
 	vm := &VM{
 		heap:                    h,
 		globals:                 map[*str.String]Value{},
 		moduleExports:           map[*str.String]Value{},
 		newStack:                []Value{Undefined},
 		GasLeft:                 1 << 32,
+		gasInit:                 1 << 32,
 		DisableArchtimeGeometry: !archtimeGeometryAvailable,
 		MaxDepth:                512,
 	}
@@ -123,38 +284,7 @@ func NewVM(h *Heap) *VM {
 	vm.returnTok = ObjectValue(h.NewObject())
 	vm.tdzTok = ObjectValue(h.NewObject())
 	vm.thisStack = []Value{ObjectValue(vm.globalObj)}
-	h.AddScanner(func(visit func(Value)) {
-		visit(ObjectValue(vm.globalObj))
-		visit(ObjectValue(vm.generatorProto))
-		for _, fr := range vm.frames {
-			visit(ObjectValue(fr.env))
-			visit(fr.callee)
-			visit(fr.newTarget)
-		}
-		for _, v := range vm.globals {
-			visit(v)
-		}
-		for _, v := range vm.moduleExports {
-			visit(v)
-		}
-		for _, v := range vm.thisStack {
-			visit(v)
-		}
-		for _, v := range vm.newStack {
-			visit(v)
-		}
-		for _, e := range vm.safeEnvs {
-			visit(ObjectValue(e))
-		}
-		visit(vm.keep)
-		visit(vm.returnTok)
-		visit(vm.tdzTok)
-		for i := range vm.jobs {
-			for _, v := range vm.jobs[i].hold {
-				visit(v)
-			}
-		}
-	})
+	h.boundVM = vm
 	vm.installGlobals()
 	return vm
 }
@@ -218,10 +348,13 @@ func (vm *VM) installGlobals() {
 // Heap rend le tas.
 func (vm *VM) Heap() *Heap { return vm.heap }
 
+// PromiseProto rend le prototype des promesses.
+func (vm *VM) PromiseProto() Handle { return vm.promiseProto }
+
 // SetGlobal pose une variable globale.
 func (vm *VM) SetGlobal(name string, v Value) {
 	key := vm.heap.Intern().InternGo(name)
-	vm.globals[key] = v
+	vm.storeGlobal(key, v)
 	if vm.globalObj != NoHandle && name != "\x00tdz" {
 		if vm.heap.Get(vm.globalObj) != nil {
 			vm.heap.SetProperty(vm.globalObj, key, v)
@@ -231,8 +364,7 @@ func (vm *VM) SetGlobal(name string, v Value) {
 
 // GetGlobal rend une variable globale.
 func (vm *VM) GetGlobal(name string) (Value, bool) {
-	v, ok := vm.globals[vm.heap.Intern().InternGo(name)]
-	return v, ok
+	return vm.bindGlobal(vm.heap.Intern().InternGo(name))
 }
 
 // GetExport rend une liaison exportée par le module courant.
@@ -278,14 +410,34 @@ func (vm *VM) Contextify(sandbox Value) error {
 		}
 	}
 	for k, v := range vm.globals {
+		if v == globalTombstone {
+			continue
+		}
 		if _, ok := vm.heap.GetOwnProperty(sandbox.Handle(), k); ok {
 			continue
 		}
 		vm.heap.SetProperty(sandbox.Handle(), k, v)
 	}
+	if vm.realm != nil {
+		for k, v := range vm.realm.Globals {
+			if k == nil || k.EqualASCII("globalThis") || k.EqualASCII("\x00tdz") {
+				continue
+			}
+			if _, tomb := vm.globals[k]; tomb && vm.globals[k] == globalTombstone {
+				continue
+			}
+			if _, ok := vm.bindGlobal(k); !ok {
+				continue
+			}
+			if _, ok := vm.heap.GetOwnProperty(sandbox.Handle(), k); ok {
+				continue
+			}
+			vm.heap.SetProperty(sandbox.Handle(), k, v)
+		}
+	}
 	for _, k := range vm.ownPropertyNames(sandbox, false) {
 		if v, ok := vm.heap.GetOwnProperty(sandbox.Handle(), k); ok {
-			vm.globals[k] = v
+			vm.storeGlobal(k, v)
 		}
 	}
 	vm.globalObj = sandbox.Handle()
@@ -295,7 +447,7 @@ func (vm *VM) Contextify(sandbox Value) error {
 		vm.thisStack[0] = sandbox
 	}
 	gt := vm.heap.Intern().InternGo("globalThis")
-	vm.globals[gt] = sandbox
+	vm.storeGlobal(gt, sandbox)
 	vm.heap.SetProperty(sandbox.Handle(), gt, sandbox)
 	return nil
 }
@@ -1152,7 +1304,8 @@ func (vm *VM) step(fr *frame, op Op, arg uint32) error {
 		if err != nil {
 			return err
 		}
-		v, ok := vm.globals[vm.heap.Intern().Intern(name)]
+		key := vm.heap.Intern().Intern(name)
+		v, ok := vm.bindGlobal(key)
 		if !ok {
 			return vm.throwText(fr, "ReferenceError: "+name.GoString()+" is not defined")
 		}
@@ -1169,12 +1322,12 @@ func (vm *VM) step(fr *frame, op Op, arg uint32) error {
 		if cur, ok := vm.globals[name]; ok && cur == vm.tdzTok {
 			return vm.throwText(fr, "ReferenceError: Cannot access '"+name.GoString()+"' before initialization")
 		}
-		if _, ok := vm.globals[name]; !ok {
+		if _, ok := vm.bindGlobal(name); !ok {
 			if fr != nil && fr.chunk != nil && fr.chunk.Strict {
 				return vm.throwText(fr, "ReferenceError: "+name.GoString()+" is not defined")
 			}
 		}
-		vm.globals[name] = vm.peek(0)
+		vm.storeGlobal(name, vm.peek(0))
 		if vm.globalObj != NoHandle && vm.heap.Get(vm.globalObj) != nil {
 			vm.heap.SetProperty(vm.globalObj, name, vm.peek(0))
 		}
@@ -1185,7 +1338,7 @@ func (vm *VM) step(fr *frame, op Op, arg uint32) error {
 		}
 		key := vm.heap.Intern().Intern(raw)
 		v := vm.pop()
-		vm.globals[key] = v
+		vm.storeGlobal(key, v)
 		if vm.globalObj != NoHandle && vm.heap.Get(vm.globalObj) != nil {
 			vm.heap.SetProperty(vm.globalObj, key, v)
 		}
@@ -1194,7 +1347,7 @@ func (vm *VM) step(fr *frame, op Op, arg uint32) error {
 		if err != nil {
 			return err
 		}
-		v, ok := vm.globals[vm.heap.Intern().Intern(name)]
+		v, ok := vm.bindGlobal(vm.heap.Intern().Intern(name))
 		if !ok {
 			v = Undefined
 		}
@@ -1405,9 +1558,7 @@ func (vm *VM) step(fr *frame, op Op, arg uint32) error {
 		proto := vm.pop()
 		obj := vm.peek(0)
 		if obj.IsObject() && proto.IsObject() {
-			if o := vm.heap.Get(obj.Handle()); o != nil {
-				o.proto = proto.Handle()
-			}
+			vm.heap.SetProto(obj.Handle(), proto.Handle())
 		}
 
 	case OpExport:
@@ -1779,6 +1930,9 @@ func (vm *VM) callInternal(fr *frame, argc int, thisVal Value, newObj, newTarget
 		vm.thisStack, vm.newStack = previousThis, previousNew
 		if err != nil {
 			if _, ok := err.(*Throw); ok {
+				return err
+			}
+			if errors.Is(err, ErrGasExhausted) || errors.Is(err, ErrInterrupted) {
 				return err
 			}
 			return vm.throwText(fr, err.Error())
@@ -2243,7 +2397,7 @@ func (vm *VM) setProp(fr *frame, obj Value, name *str.String, v Value) error {
 	}
 	vm.heap.SetProperty(obj.Handle(), name, v)
 	if obj.Handle() == vm.globalObj {
-		vm.globals[vm.heap.Intern().Intern(name)] = v
+		vm.storeGlobal(vm.heap.Intern().Intern(name), v)
 	}
 	return nil
 }

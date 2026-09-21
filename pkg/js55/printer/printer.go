@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 // Package printer réimprime un arbre syntaxique en source ECMAScript.
 //
 // Son objet n'est pas l'élégance de la sortie mais la FIDÉLITÉ : réanalyser ce

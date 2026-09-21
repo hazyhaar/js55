@@ -3,3 +3,5 @@ out/
 *.log
 *.tmp
 .DS_Store
+/js55
+/js55-ci

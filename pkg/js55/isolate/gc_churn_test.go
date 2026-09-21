@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package isolate_test
 
@@ -30,7 +30,7 @@ for (let i = 0; i < 50000; i = i + 1) {
 sum;
 `
 
-	val, err := iso.Eval(ctx, script)
+	val, err := iso.EvalContext(ctx, script)
 	if err != nil {
 		t.Fatalf("Le script avec fort churn a été tué à tort : %v", err)
 	}

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine
 
@@ -345,6 +345,20 @@ func (vm *VM) toRegExpString(v Value) string {
 	return vm.toDisplayString(v)
 }
 
+func (vm *VM) regexpFindIndex(rd *RegExpData, s string) ([]int, error) {
+	if len(s) > jsreMaxInputLen {
+		return nil, ErrRegExpInputTooLarge
+	}
+	loc, completed := rd.find.FindStringSubmatchIndexInterruptible(s, &vm.GasLeft, vm.interrupted)
+	if completed {
+		return loc, nil
+	}
+	if vm.interrupted() {
+		return nil, ErrInterrupted
+	}
+	return nil, ErrGasExhausted
+}
+
 func (vm *VM) regexpBuiltinExec(thisVal Value, rd *RegExpData, s string) (Value, error) {
 	isGlobal := rd.global || strings.Contains(rd.flags, "g")
 	isSticky := rd.sticky || strings.Contains(rd.flags, "y")
@@ -359,7 +373,13 @@ func (vm *VM) regexpBuiltinExec(thisVal Value, rd *RegExpData, s string) (Value,
 	}
 	byteStart := utf8IndexForUTF16(s, lastIdx)
 	subStr := s[byteStart:]
-	loc := rd.find.FindStringSubmatchIndex(subStr)
+	loc, findErr := vm.regexpFindIndex(rd, subStr)
+	if findErr != nil {
+		if isGlobal || isSticky {
+			vm.setRegexpLastIndex(thisVal, rd, 0)
+		}
+		return Null, findErr
+	}
 	if loc == nil {
 		if isGlobal || isSticky {
 			vm.setRegexpLastIndex(thisVal, rd, 0)
@@ -638,7 +658,10 @@ func (vm *VM) stringSplitRegexp(s string, rd *RegExpData, lim int) (Value, error
 		if pos > len(s) {
 			break
 		}
-		loc := rd.find.FindStringSubmatchIndex(s[pos:])
+		loc, findErr := vm.regexpFindIndex(rd, s[pos:])
+		if findErr != nil {
+			return Undefined, findErr
+		}
 		if loc == nil {
 			parts = append(parts, part{s: s[pos:]})
 			break
@@ -705,7 +728,10 @@ func (vm *VM) stringReplaceRegexp(s string, reVal Value, rd *RegExpData, repl Va
 	n := 0
 	for pos <= len(s) && n < len(s)+2 {
 		n++
-		loc := rd.find.FindStringSubmatchIndex(s[pos:])
+		loc, findErr := vm.regexpFindIndex(rd, s[pos:])
+		if findErr != nil {
+			return Undefined, findErr
+		}
 		if loc == nil {
 			b.WriteString(s[pos:])
 			break

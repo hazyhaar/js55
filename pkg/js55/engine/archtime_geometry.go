@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package engine
 
 import (
@@ -28,8 +29,10 @@ func (vm *VM) tryArchtimeGeometry(fr *frame, c *Chunk, argc int, thisVal Value) 
 		return reject()
 	}
 	// The only global read in the closed compiled body is the compiler TDZ token.
-	if vm.globals[vm.heap.intern.InternGo("\x00tdz")] != vm.tdzTok {
-		return reject()
+	if key := vm.heap.intern.InternGo("\x00tdz"); vm.globals != nil {
+		if cur, ok := vm.globals[key]; ok && cur != vm.tdzTok {
+			return reject()
+		}
 	}
 	av, ok := vm.getOrdinaryDataSlot(a, "array")
 	if !ok || !av.IsObject() {

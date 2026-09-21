@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 // Package ast décrit l'arbre syntaxique d'ECMAScript 2020.
 //
 // Note sur la contrainte C1 du plan : l'interdiction d'interface{} porte sur les

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package ci_test
 
@@ -131,7 +131,7 @@ assertEquals(55, total);
 
 	for _, vt := range v8Tests {
 		fullScript := harnessPreamble + "\n" + vt.code
-		res, err := iso.Eval(ctx, fullScript)
+		res, err := iso.EvalContext(ctx, fullScript)
 		if err != nil {
 			t.Fatalf("Échec test V8 mjsunit '%s': %v", vt.name, err)
 		}
@@ -223,7 +223,7 @@ func TestMultiTenantScale(t *testing.T) {
 			startIdx := workerID * (1000 / numWorkers)
 			endIdx := startIdx + (1000 / numWorkers)
 			for i := startIdx; i < endIdx; i++ {
-				res, err := isolates[i].Eval(ctx, fmt.Sprintf("let v = %d; v * 3;", i))
+				res, err := isolates[i].EvalContext(ctx, fmt.Sprintf("let v = %d; v * 3;", i))
 				if err != nil {
 					t.Errorf("Erreur exécution isolat %d: %v", i, err)
 					return

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package isolate_test
 
@@ -30,7 +30,7 @@ for (let i = 0; i < 2500000; i = i + 1) {
 }
 `
 
-	_, err = iso.Eval(ctx, script)
+	_, err = iso.EvalContext(ctx, script)
 	if err == nil {
 		t.Fatalf("Attaque d'allocation réussie ! Le quota de 1 Mo n'a pas arrêté le script.")
 	}

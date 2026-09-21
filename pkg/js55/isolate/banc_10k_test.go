@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package isolate_test
 
@@ -76,7 +76,7 @@ func TestBanc10kIsolates(t *testing.T) {
 				endIdx = N
 			}
 			for i := startIdx; i < endIdx; i++ {
-				res, err := isolates[i].Eval(ctx, fmt.Sprintf("let x = %d; x * 2;", i))
+				res, err := isolates[i].EvalContext(ctx, fmt.Sprintf("let x = %d; x * 2;", i))
 				if err != nil {
 					t.Errorf("Erreur eval isolat %d: %v", i, err)
 					return

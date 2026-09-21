@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package parser
 
 import (
@@ -38,6 +39,52 @@ func (p *parser) parseStatementListItem() ast.Stmt {
 			p.fail("« export » n'est admis que dans un module")
 		}
 	}
+	// Déclarations TypeScript dépourvues d'effet à l'exécution : elles sont
+	// effacées. « interface » et « enum » sont lexés en mots réservés,
+	// « type » et « namespace » en identifiants ; le test couvre les deux.
+	if p.typescript && p.isName() {
+		switch p.tok.Value {
+		case "interface":
+			start := p.tok.Pos
+			p.advance() // interface
+			if p.tok.Kind == lexer.Ident {
+				p.advance() // nom
+			}
+			p.skipTypeParams()
+			if p.eatKeyword("extends") {
+				for !p.is(lexer.LBrace) && !p.is(lexer.EOF) {
+					p.advance()
+				}
+			}
+			p.skipBalancedBraces()
+			return &ast.EmptyStmt{Base: ast.Base{P: start}}
+
+		case "type":
+			// Un alias exige un nom derrière « type » ; sinon « type » est un
+			// identifiant ordinaire (« type = 1; »).
+			save := p.lx.Save()
+			tk := p.tok
+			p.advance()
+			isAlias := p.tok.Kind == lexer.Ident
+			p.lx.Restore(save)
+			p.tok = tk
+			if isAlias {
+				start := p.tok.Pos
+				p.advance() // type
+				p.advance() // nom
+				p.skipTypeParams()
+				if p.eat(lexer.Assign) {
+					p.skipType()
+				}
+				p.semicolon()
+				return &ast.EmptyStmt{Base: ast.Base{P: start}}
+			}
+
+		case "enum", "namespace":
+			p.fail("les enums/namespaces TypeScript avec génération de code au runtime ne sont pas supportés en mode type-stripping")
+		}
+	}
+
 	// « async function » ouvre une déclaration de fonction asynchrone.
 	// « async » est lexé en identifiant, non en mot réservé : ce cas ne peut
 	// donc pas vivre dans le commutateur ci-dessus.
@@ -207,6 +254,10 @@ func (p *parser) parseVarDeclList(kind string, start lexer.Position) *ast.VarDec
 	for {
 		dStart := p.tok.Pos
 		target := p.parseBindingTarget()
+		if p.typescript {
+			p.eat(lexer.Not)
+			p.skipTypeAnnotation()
+		}
 		decl := &ast.VarDeclarator{Base: ast.Base{P: dStart}, Target: target}
 		if p.eat(lexer.Assign) {
 			p.regexpHere()
@@ -365,6 +416,9 @@ func (p *parser) parseFor() ast.Stmt {
 
 		// Un seul nom lié sans initialiseur peut ouvrir un for-in ou un for-of.
 		target := p.parseBindingTarget()
+		if p.typescript {
+			p.skipTypeAnnotation()
+		}
 		if kind == "let" || kind == "const" {
 			seen := map[string]int{}
 			if dup := boundNameDup(target, seen); dup != "" {
@@ -398,6 +452,9 @@ func (p *parser) parseFor() ast.Stmt {
 		for p.eat(lexer.Comma) {
 			dStart := p.tok.Pos
 			t := p.parseBindingTarget()
+			if p.typescript {
+				p.skipTypeAnnotation()
+			}
 			d := &ast.VarDeclarator{Base: ast.Base{P: dStart}, Target: t}
 			if p.eat(lexer.Assign) {
 				p.regexpHere()
@@ -506,6 +563,9 @@ func (p *parser) parseTry() ast.Stmt {
 		c := &ast.CatchClause{Base: ast.Base{P: cStart}}
 		if p.eat(lexer.LParen) {
 			c.Param = p.parseBindingTarget()
+			if p.typescript {
+				p.skipTypeAnnotation()
+			}
 			p.expect(lexer.RParen)
 		}
 		c.Body = p.parseBlock()
@@ -582,6 +642,22 @@ func (p *parser) parseImportDecl() ast.Stmt {
 	start := p.tok.Pos
 	p.advance() // import
 
+	// import type { X } from "./x" ou import type X from "./x"
+	if p.typescript && p.isName() && p.tok.Value == "type" {
+		save := p.lx.Save()
+		tk := p.tok
+		p.advance()
+		if p.is(lexer.LBrace) || p.is(lexer.Star) || (p.isName() && p.tok.Value != "from") {
+			for !p.is(lexer.Semicolon) && !p.is(lexer.EOF) {
+				p.advance()
+			}
+			p.eat(lexer.Semicolon)
+			return &ast.EmptyStmt{Base: ast.Base{P: start}}
+		}
+		p.lx.Restore(save)
+		p.tok = tk
+	}
+
 	d := &ast.ImportDecl{Base: ast.Base{P: start}}
 
 	// import "module"
@@ -653,6 +729,42 @@ func (p *parser) parseImportDecl() ast.Stmt {
 func (p *parser) parseExportDecl() ast.Stmt {
 	start := p.tok.Pos
 	p.advance() // export
+
+	if p.typescript && p.isName() {
+		switch p.tok.Value {
+		case "type":
+			p.advance()
+			for !p.is(lexer.Semicolon) && !p.is(lexer.EOF) {
+				p.advance()
+			}
+			p.eat(lexer.Semicolon)
+			return &ast.EmptyStmt{Base: ast.Base{P: start}}
+		case "interface":
+			p.advance()
+			if p.tok.Kind == lexer.Ident {
+				p.advance()
+			}
+			p.skipTypeParams()
+			if p.eatKeyword("extends") {
+				for !p.is(lexer.LBrace) && !p.is(lexer.EOF) {
+					p.advance()
+				}
+			}
+			if p.is(lexer.LBrace) {
+				depth := 1
+				p.advance()
+				for !p.is(lexer.EOF) && depth > 0 {
+					if p.is(lexer.LBrace) {
+						depth++
+					} else if p.is(lexer.RBrace) {
+						depth--
+					}
+					p.advance()
+				}
+			}
+			return &ast.EmptyStmt{Base: ast.Base{P: start}}
+		}
+	}
 
 	d := &ast.ExportDecl{Base: ast.Base{P: start}}
 

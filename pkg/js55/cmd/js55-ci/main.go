@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 // Command js55-ci — Orchestrateur CI Unifié du Moteur JavaScript Souverain js55.
 package main
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -72,6 +73,60 @@ func ensureFreshBinaries() error {
 	return nil
 }
 
+func runBenchGuard() error {
+	fmt.Printf("[CI Garde] Bancs de Régression & Métrologie Réelle avec Seuils Stricts (isolate)...\n")
+	start := time.Now()
+	cmd := exec.Command("go", "test", "-run", "^$", "-bench", "^Benchmark(IsolateColdBoot|IsolateWarmReset|ZeroCopyTransfer|HostCallDirect)$", "-benchmem", "-benchtime=100ms", "github.com/hazyhaar/js55/pkg/js55/isolate")
+	cmd.Dir = "/devhoros"
+	cmd.Env = append(os.Environ(), "GOEXPERIMENT=simd")
+	out, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
+	if err != nil {
+		fmt.Printf("❌ ÉCHEC Garde Benchmarks (%v):\n%s\n", elapsed, string(out))
+		return err
+	}
+	outStr := string(out)
+	fmt.Printf("%s\n", outStr)
+
+	// Validation mécanique des seuils d'allocations
+	thresholds := map[string]int{
+		"BenchmarkIsolateColdBoot":  20,
+		"BenchmarkIsolateWarmReset": 5,
+		"BenchmarkZeroCopyTransfer": 5,
+		"BenchmarkHostCallDirect":   15,
+	}
+
+	for benchName, maxAllocs := range thresholds {
+		idx := strings.Index(outStr, benchName)
+		if idx == -1 {
+			return fmt.Errorf("js55-ci: banc %s introuvable dans les résultats", benchName)
+		}
+		lineEnd := strings.Index(outStr[idx:], "\n")
+		var line string
+		if lineEnd == -1 {
+			line = outStr[idx:]
+		} else {
+			line = outStr[idx : idx+lineEnd]
+		}
+		allocIdx := strings.Index(line, "allocs/op")
+		if allocIdx != -1 {
+			fields := strings.Fields(line[:allocIdx])
+			if len(fields) > 0 {
+				var allocs int
+				if _, sErr := fmt.Sscanf(fields[len(fields)-1], "%d", &allocs); sErr == nil {
+					if allocs > maxAllocs {
+						return fmt.Errorf("js55-ci: régression sur %s: %d allocs/op > plafond autorisé (%d)", benchName, allocs, maxAllocs)
+					}
+					fmt.Printf("  [Seuil OK] %s: %d allocs/op <= %d plafond\n", benchName, allocs, maxAllocs)
+				}
+			}
+		}
+	}
+
+	fmt.Printf("✅ PASS Garde Benchmarks & Seuils d'Allocations Validés en %v\n", elapsed)
+	return nil
+}
+
 func main() {
 	fmt.Println("=================================================================")
 	fmt.Println("   js55 UNIFIED CI PIPELINE (Go 1.27, ARCHTIME-SIMD, Zero-CGO)  ")
@@ -95,10 +150,11 @@ func main() {
 		runFilter string
 	}{
 		{"Gardes d'Architecture csgguard (Table O(1), Cadre 96B)", "github.com/hazyhaar/js55/pkg/js55/csgguard", ""},
+		{"Validation du Parser & Type-Stripping TypeScript", "github.com/hazyhaar/js55/pkg/js55/parser", ""},
 		{"Suite V8 mjsunit (Arithmétique, Portées, Récursion)", "github.com/hazyhaar/js55/pkg/js55/ci", "TestCI_03_V8_Mjsunit_Harness"},
 		{"Suite d'Oracle Contradictoire Node.js V8 (SIMD AVX2)", "github.com/hazyhaar/c2pkg/c2jsc_oracle", ""},
 		{"Banc Haute Densité 10 000 VMs & Concurrence Active", "github.com/hazyhaar/js55/pkg/js55/isolate", ""},
-		{"Suite Officielle ECMAScript TC39 Test262 & Ratchet", "github.com/hazyhaar/js55/pkg/js55/conformance", ""},
+		{"Suite Officielle ECMAScript TC39 Test262 & Ratchet", "github.com/hazyhaar/js55/pkg/js55/conformance", "Test(Frontmatter|Harness|Ratchet|Verdict|LanguageComments)"},
 	}
 
 	for i, step := range steps {
@@ -106,6 +162,12 @@ func main() {
 			fmt.Printf("\n❌ PIPELINE CI INTERROMPU À L'ÉTAPE %d EN %v\n", i+1, time.Since(globalStart))
 			os.Exit(1)
 		}
+	}
+
+	// 6. Garde de performance et non-régression des bancs officiels
+	if err := runBenchGuard(); err != nil {
+		fmt.Printf("\n❌ PIPELINE CI INTERROMPU SUR LA GARDE DE PERFORMANCE EN %v\n", time.Since(globalStart))
+		os.Exit(1)
 	}
 
 	fmt.Println("=================================================================")

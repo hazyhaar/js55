@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package isolate_test
 
@@ -32,7 +32,7 @@ for (let i = 0; i < 20000; i = i + 1) {
 }
 `
 
-	_, evalErr := iso.Eval(ctx, script)
+	_, evalErr := iso.EvalContext(ctx, script)
 	if evalErr == nil {
 		t.Fatalf("L'attaque de croissance de propriétés aurait dû être tuée par le quota mémoire !")
 	}

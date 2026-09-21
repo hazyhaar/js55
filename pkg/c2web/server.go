@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package c2web
 
 import (
@@ -74,12 +75,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	resp := map[string]interface{}{
-		"isolate_startup_us": 4.2,
-		"memory_per_isolate": "32 KB",
-		"concurrency_limit":  "10,000+ per Go process",
-		"cgo_enabled":        0,
-		"zero_copy_buffer":   true,
-		"gas_metering":       true,
+		"engine":         "js55",
+		"cgo_enabled":    0,
+		"gas_metering":   true,
+		"memory_quota":   true,
+		"metrics_status": "not_qualified",
+		"note":           "latency and memory figures are withheld until produced by named, reproducible benchmarks",
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
@@ -136,7 +137,7 @@ func (s *Server) handleEval(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	val, err := iso.Eval(ctx, req.Code)
+	val, err := iso.EvalContext(ctx, req.Code)
 	execTime := time.Since(tExecStart)
 
 	if err != nil {
@@ -161,18 +162,23 @@ func (s *Server) handleEval(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBench(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Benchmark isolate instantiation
+	// Measure isolate instantiation cost locally. No cross-runtime comparison and
+	// no allocation count is asserted here.
+	const iterations = 1000
 	t0 := time.Now()
-	for i := 0; i < 1000; i++ {
-		_, _ = js55.NewIsolate(js55.Config{})
+	for i := 0; i < iterations; i++ {
+		iso, err := js55.NewIsolate(js55.Config{})
+		if err != nil {
+			http.Error(w, "isolate instantiation failed", http.StatusInternalServerError)
+			return
+		}
+		_ = iso.Close()
 	}
-	avgStartupUs := float64(time.Since(t0).Microseconds()) / 1000.0
+	avgStartupUs := float64(time.Since(t0).Microseconds()) / float64(iterations)
 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"avg_startup_us":     avgStartupUs,
-		"target_startup_us":  4.2,
-		"node_comparison_ms": 35.0,
-		"speedup_factor":     fmt.Sprintf("%.0fx faster startup", (35.0*1000.0)/avgStartupUs),
-		"allocs_per_isolate": 1,
+		"iterations":     iterations,
+		"avg_startup_us": avgStartupUs,
+		"metrics_status": "local_measurement_only",
 	})
 }

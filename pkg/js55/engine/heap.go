@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package engine
 
 import (
@@ -114,6 +115,9 @@ type Shape struct {
 	slot        int
 	count       int
 	transitions map[*str.String]*Shape
+	// shared interdit toute mutation de la carte de transitions : la forme
+	// appartient au royaume racine et est lue par plusieurs isolats.
+	shared bool
 }
 
 // Count rend le nombre de propriétés portées par la forme.
@@ -122,8 +126,19 @@ func (s *Shape) Count() int { return s.count }
 // Lookup rend l'emplacement de key dans la forme, ou -1. La comparaison est une
 // égalité de pointeurs : key doit être internée.
 func (s *Shape) Lookup(key *str.String) int {
+	if key == nil {
+		return -1
+	}
 	for c := s; c != nil && c.key != nil; c = c.parent {
 		if c.key == key {
+			return c.slot
+		}
+	}
+	// Les clés du royaume racine et celles de l'isolat ne partagent pas leur
+	// pointeur interné. L'égalité de contenu ne sert qu'en cas d'échec du
+	// chemin par identité.
+	for c := s; c != nil && c.key != nil; c = c.parent {
+		if c.key.Equal(key) {
 			return c.slot
 		}
 	}
@@ -143,21 +158,39 @@ func (s *Shape) Keys() []*str.String {
 // mémorisées : deux objets construits de la même façon convergent vers la même
 // forme, ce qui est tout l'intérêt du modèle.
 func (s *Shape) transition(key *str.String) *Shape {
-	if next, ok := s.transitions[key]; ok {
-		return next
+	if s != nil && s.shared {
+		return s.unshare().transition(key)
+	}
+	if s.transitions != nil {
+		if next, ok := s.transitions[key]; ok {
+			return next
+		}
 	}
 	next := &Shape{
-		parent:      s,
-		key:         key,
-		slot:        s.count,
-		count:       s.count + 1,
-		transitions: map[*str.String]*Shape{},
+		parent: s,
+		key:    key,
+		slot:   s.count,
+		count:  s.count + 1,
 	}
 	if s.transitions == nil {
 		s.transitions = map[*str.String]*Shape{}
 	}
 	s.transitions[key] = next
 	return next
+}
+
+// unshare reconstruit la chaîne hors du royaume racine, afin qu'une transition
+// locale ne mute pas la carte partagée.
+func (s *Shape) unshare() *Shape {
+	if s == nil || !s.shared {
+		return s
+	}
+	keys := s.Keys()
+	cur := &Shape{}
+	for _, k := range keys {
+		cur = cur.transition(k)
+	}
+	return cur
 }
 
 // ─── Objets ─────────────────────────────────────────────────────────────────
@@ -198,6 +231,7 @@ type Object struct {
 	prim       Value
 	gen        *GenState
 	frozen     bool
+	isRoot     bool
 	deleted    []*str.String
 	// attrs est parallèle à slots. Une tranche plus courte vaut attrDefault
 	// (inscriptible, énumérable, configurable) pour chaque emplacement manquant.
@@ -242,6 +276,48 @@ func (o *Object) Text() *str.String { return o.text }
 // Elements rend les éléments denses d'un tableau.
 func (o *Object) Elements() []Value { return o.elements }
 
+// Bytes rend le tampon d'octets sous-jacent.
+func (o *Object) Bytes() []byte { return o.bytes }
+
+// SetBytes fixe le tampon d'octets.
+func (o *Object) SetBytes(b []byte) { o.bytes = b }
+
+// TypedName rend le nom du type TypedArray (ex: "Uint8Array").
+func (o *Object) TypedName() string { return o.typedName }
+
+// SetTypedName fixe le nom du type TypedArray.
+func (o *Object) SetTypedName(n string) { o.typedName = n }
+
+// ByteOffset rend le décalage en octets dans le tampon.
+func (o *Object) ByteOffset() int { return o.byteOffset }
+
+// SetByteOffset fixe le décalage en octets.
+func (o *Object) SetByteOffset(offset int) { o.byteOffset = offset }
+
+// TypedLength rend la longueur en éléments de la vue typée.
+func (o *Object) TypedLength() int { return o.typedLength }
+
+// SetTypedLength fixe la longueur en éléments.
+func (o *Object) SetTypedLength(l int) { o.typedLength = l }
+
+// ArrayBuffer indique si l'objet est un ArrayBuffer.
+func (o *Object) ArrayBuffer() bool { return o.arrayBuffer }
+
+// SetArrayBuffer marque l'objet comme ArrayBuffer.
+func (o *Object) SetArrayBuffer(v bool) { o.arrayBuffer = v }
+
+// SetResizable règle la possibilité de redimensionnement.
+func (o *Object) SetResizable(r bool) { o.resizable = r }
+
+// SetMaxByteLength règle la taille maximale de redimensionnement.
+func (o *Object) SetMaxByteLength(m int) { o.maxByteLength = m }
+
+// SetEnv fixe le handle de l'environnement ou du buffer parent.
+func (o *Object) SetEnv(h Handle) { o.env = h }
+
+// SetProto fixe le prototype de l'objet.
+func (o *Object) SetProto(h Handle) { o.proto = h }
+
 // ─── Tas ────────────────────────────────────────────────────────────────────
 
 // Heap possède les objets, les formes et la table d'internement. Il n'est PAS
@@ -267,7 +343,7 @@ type Heap struct {
 	// borne » et « [object Released] is not a function ».
 	scanners []func(visit func(Value))
 
-	intern    *str.Table
+	intern    str.Table
 	rootShape *Shape
 
 	stress      bool
@@ -282,6 +358,22 @@ type Heap struct {
 	objectProto   Handle
 	arrayProto    Handle
 	functionProto Handle
+
+	// realm est le tas du royaume racine. Il est nil pour le tas racine lui-même.
+	realm *Heap
+	// cowMap substitue un handle racine (sans bit) par le clone local.
+	cowMap map[Handle]Handle
+	// boundVM permet au collecteur et à la résolution des globales d'atteindre
+	// l'interpréteur sans fermeture allouée à la construction.
+	boundVM *VM
+	// buildingRoot distingue le tas en cours d'installation des intrinsèques.
+	buildingRoot bool
+	// sealedRoot interdit la collecte : les objets y sont immortels et partagés.
+	sealedRoot bool
+
+	shape0 Shape
+	objBuf [16]*Object
+	genBuf [16]uint16
 }
 
 // TrackAlloc notifie le gestionnaire de quota et panique si la limite est dépassée.
@@ -303,13 +395,11 @@ func (h *Heap) TrackFree(bytes int64) {
 // NewHeap crée un tas vide. Le handle zéro est réservé : l'emplacement 0 ne
 // désigne jamais un objet vivant.
 func NewHeap() *Heap {
-	return &Heap{
-		objs:      []*Object{nil},
-		gens:      []uint16{0},
-		intern:    str.NewTable(),
-		rootShape: &Shape{transitions: map[*str.String]*Shape{}},
-		threshold: 1024,
-	}
+	h := &Heap{threshold: 1024}
+	h.objs = h.objBuf[:1]
+	h.gens = h.genBuf[:1]
+	h.rootShape = &h.shape0
+	return h
 }
 
 // SetStress active la collecte à CHAQUE allocation. C'est l'instrument T3.1 :
@@ -321,7 +411,7 @@ func (h *Heap) SetStress(v bool) { h.stress = v }
 func (h *Heap) Stress() bool { return h.stress }
 
 // Intern rend la table d'internement des clés.
-func (h *Heap) Intern() *str.Table { return h.intern }
+func (h *Heap) Intern() *str.Table { return &h.intern }
 
 // Live rend le nombre d'objets vivants.
 func (h *Heap) Live() int { return len(h.objs) - 1 - len(h.free) }
@@ -333,17 +423,144 @@ func (hp *Heap) Get(h Handle) *Object {
 	if h == NoHandle {
 		return nil
 	}
+	if h.IsRoot() && !hp.sealedRoot && !hp.buildingRoot {
+		if hp.cowMap != nil {
+			if local, ok := hp.cowMap[stripRoot(h)]; ok {
+				return hp.getLocal(local)
+			}
+		}
+		if hp.realm != nil {
+			return hp.realm.getLocal(h)
+		}
+		return nil
+	}
+	return hp.getLocal(h)
+}
+
+func (hp *Heap) getLocal(h Handle) *Object {
+	if h == NoHandle {
+		return nil
+	}
+	if h.IsRoot() {
+		if !hp.sealedRoot && !hp.buildingRoot {
+			return nil
+		}
+		h = stripRoot(h)
+	}
 	i := int(h.Index())
 	if i <= 0 || i >= len(hp.objs) {
 		return nil
 	}
-	// La génération départage un emplacement réattribué d'un handle encore
-	// valide : sans ce contrôle, un handle périmé désignerait le NOUVEAU
-	// locataire de l'emplacement.
-	if hp.gens[i] != h.Gen() {
+	gen := hp.gens[i]
+	if hp.sealedRoot || hp.buildingRoot {
+		gen = gen &^ rootGenBit
+	}
+	if gen != h.Gen() {
 		return nil
 	}
 	return hp.objs[i]
+}
+
+// Mutable rend l'objet local correspondant, en clonant un objet racine avant
+// toute écriture.
+func (h *Heap) Mutable(hd Handle) *Object {
+	if hd.IsRoot() {
+		hd = h.cow(hd)
+	}
+	return h.getLocal(hd)
+}
+
+func (h *Heap) prepareWrite(hd Handle) Handle {
+	if hd.IsRoot() {
+		return h.cow(hd)
+	}
+	return hd
+}
+
+func (h *Heap) cow(hd Handle) Handle {
+	if !hd.IsRoot() || h.realm == nil {
+		return hd
+	}
+	bare := stripRoot(hd)
+	if h.cowMap != nil {
+		if local, ok := h.cowMap[bare]; ok {
+			return local
+		}
+	}
+	src := h.realm.getLocal(hd)
+	if src == nil {
+		return hd
+	}
+	h.TrackAlloc(objectCharge(src))
+	clone := cloneObject(src)
+	if clone.shape != nil && clone.shape.shared {
+		// La forme partagée reste lisible. La transition la détachera à la
+		// première clé nouvelle. Les slots sont déjà une copie privée.
+	}
+	local := h.alloc(clone)
+	if h.cowMap == nil {
+		h.cowMap = make(map[Handle]Handle)
+	}
+	h.cowMap[bare] = local
+	return local
+}
+
+func (h *Heap) DiscardCow() {
+	for k := range h.cowMap {
+		delete(h.cowMap, k)
+	}
+}
+
+func (h *Heap) ResetGlobalShell(hd Handle) {
+	o := h.getLocal(hd)
+	if o == nil {
+		return
+	}
+	if o.slots != nil {
+		o.slots = o.slots[:0]
+	}
+	if o.elements != nil {
+		o.elements = o.elements[:0]
+	}
+	if o.attrs != nil {
+		o.attrs = o.attrs[:0]
+	}
+	if o.deleted != nil {
+		o.deleted = o.deleted[:0]
+	}
+	o.shape = h.rootShape
+	o.frozen = false
+	o.isRoot = false
+	if h.objectProto != NoHandle {
+		o.proto = h.objectProto
+	}
+}
+
+// ResetLocal réinitialise le tas local pour recyclage : invalide tous les objets locaux
+// du cycle précédent en incrémentant leurs générations (rendant impossible toute lecture par
+// d'anciens handles résiduels), purge les racines et la liste libre, et nettoie le globalObj.
+func (h *Heap) ResetLocal(globalObj Handle) {
+	h.TruncateStack(0)
+	h.DiscardCow()
+	h.roots = h.roots[:0]
+	h.free = h.free[:0]
+	gIdx := int(globalObj.Index())
+	for i := 1; i < len(h.objs); i++ {
+		if i == gIdx {
+			h.ResetGlobalShell(globalObj)
+			continue
+		}
+		if i < len(h.gens) {
+			h.gens[i] = nextGen(h.gens[i]) // Invalide durablement tout handle hôte rémanent
+		}
+		h.objs[i] = nil
+	}
+	if gIdx >= 0 && gIdx < len(h.objs) {
+		h.objs = h.objs[:gIdx+1]
+		// NOTE: h.gens est conservé sans troncature pour que la génération incrémentée
+		// s'applique aux futures réallocations sur ces indices de slot.
+	}
+	h.allocs = 0
 }
 
 // MustGet rend l'objet, ou panique. Sert aux chemins où un handle invalide est
@@ -422,16 +639,35 @@ func (h *Heap) alloc(o *Object) Handle {
 		}
 	}
 
-	if n := len(h.free); n > 0 {
+	for len(h.free) > 0 {
+		n := len(h.free)
 		i := h.free[n-1]
 		h.free = h.free[:n-1]
+		if int(i) < len(h.gens) && h.gens[i] >= maxLocalGen {
+			continue
+		}
 		h.objs[i] = o
 		return makeHandle(i, h.gens[i])
 	}
+	for int(len(h.objs)) < len(h.gens) && h.gens[len(h.objs)] >= maxLocalGen {
+		h.objs = append(h.objs, nil)
+	}
+	i := uint32(len(h.objs))
 	h.objs = append(h.objs, o)
-	h.gens = append(h.gens, 0)
-	i := uint32(len(h.objs) - 1)
-	return makeHandle(i, 0)
+	var gen uint16
+	if h.buildingRoot {
+		gen = rootGenBit
+	} else if int(i) < len(h.gens) {
+		gen = h.gens[i]
+	} else {
+		gen = 0
+	}
+	if int(i) < len(h.gens) {
+		h.gens[i] = gen
+	} else {
+		h.gens = append(h.gens, gen)
+	}
+	return makeHandle(i, gen)
 }
 
 // NewObject alloue un objet ordinaire vide.
@@ -513,7 +749,14 @@ func (h *Heap) NewEnv(n int, parent Handle) Handle {
 // ─── Propriétés ─────────────────────────────────────────────────────────────
 
 // SetProto fixe le prototype d'un objet.
-func (h *Heap) SetProto(obj Handle, proto Handle) { h.MustGet(obj).proto = proto }
+func (h *Heap) SetProto(obj Handle, proto Handle) {
+	obj = h.prepareWrite(obj)
+	o := h.getLocal(obj)
+	if o == nil || o.isRoot {
+		return
+	}
+	o.proto = proto
+}
 
 // Proto rend le prototype d'un objet.
 func (h *Heap) Proto(obj Handle) Handle { return h.MustGet(obj).proto }
@@ -530,8 +773,9 @@ func (h *Heap) isDeleted(o *Object, k *str.String) bool {
 }
 
 func (h *Heap) DeleteProperty(obj Handle, key *str.String) bool {
-	o := h.Get(obj)
-	if o == nil || o.frozen {
+	obj = h.prepareWrite(obj)
+	o := h.getLocal(obj)
+	if o == nil || o.frozen || o.isRoot {
 		return false
 	}
 	k := h.intern.Intern(key)
@@ -556,7 +800,11 @@ func (h *Heap) DeleteProperty(obj Handle, key *str.String) bool {
 }
 
 func (h *Heap) SetProperty(obj Handle, key *str.String, v Value) {
+	obj = h.prepareWrite(obj)
 	o := h.MustGet(obj)
+	if o.isRoot {
+		return
+	}
 	k := h.intern.Intern(key)
 	if n := len(o.deleted); n > 0 {
 		alive := o.deleted[:0]
@@ -595,7 +843,11 @@ func (h *Heap) SetProperty(obj Handle, key *str.String, v Value) {
 // DefineDataProperty pose une propriété de données et ses attributs, y compris
 // lorsque la propriété n'est pas inscriptible (voie Object.defineProperty).
 func (h *Heap) DefineDataProperty(obj Handle, key *str.String, v Value, attrs uint8) {
+	obj = h.prepareWrite(obj)
 	o := h.MustGet(obj)
+	if o.isRoot {
+		return
+	}
 	k := h.intern.Intern(key)
 	if n := len(o.deleted); n > 0 {
 		alive := o.deleted[:0]
@@ -635,8 +887,9 @@ func (h *Heap) maybeGrowArrayIndex(o *Object, k *str.String) {
 
 // SetPropertyAttrs met à jour les seuls attributs d'une propriété déjà présente.
 func (h *Heap) SetPropertyAttrs(obj Handle, key *str.String, attrs uint8) {
-	o := h.Get(obj)
-	if o == nil || o.shape == nil {
+	obj = h.prepareWrite(obj)
+	o := h.getLocal(obj)
+	if o == nil || o.shape == nil || o.isRoot {
 		return
 	}
 	k := h.intern.Intern(key)
@@ -707,6 +960,9 @@ func (h *Heap) GetOwnProperty(obj Handle, key *str.String) (Value, bool) {
 			return o.elements[i], true
 		}
 	}
+	if h.boundVM != nil && obj == h.boundVM.globalObj {
+		return h.boundVM.bindGlobal(k)
+	}
 	return Undefined, false
 }
 
@@ -716,6 +972,9 @@ func (h *Heap) GetOwnProperty(obj Handle, key *str.String) (Value, bool) {
 func (h *Heap) GetProperty(obj Handle, key *str.String) (Value, bool) {
 	k := h.intern.Intern(key)
 	guard := len(h.objs) + 1
+	if h.realm != nil {
+		guard += len(h.realm.objs)
+	}
 	for cur := obj; cur != NoHandle && guard > 0; guard-- {
 		o := h.Get(cur)
 		if o == nil {
@@ -733,6 +992,11 @@ func (h *Heap) GetProperty(obj Handle, key *str.String) (Value, bool) {
 				return o.elements[i], true
 			}
 		}
+		if h.boundVM != nil && cur == h.boundVM.globalObj {
+			if v, ok := h.boundVM.bindGlobal(k); ok {
+				return v, true
+			}
+		}
 		cur = o.proto
 	}
 	return Undefined, false
@@ -741,7 +1005,11 @@ func (h *Heap) GetProperty(obj Handle, key *str.String) (Value, bool) {
 // SetElement pose un élément dense. Les indices au-delà de la longueur étendent
 // le tableau avec des trous à Undefined.
 func (h *Heap) SetElement(obj Handle, i int, v Value) {
+	obj = h.prepareWrite(obj)
 	o := h.MustGet(obj)
+	if o.isRoot {
+		return
+	}
 	if i < 0 {
 		return
 	}
@@ -797,7 +1065,25 @@ func (h *Heap) ReplaceArrayBufferBytes(obj Handle, src []byte) bool {
 // Collect exécute un cycle complet de marquage-balayage. Le parcours de marquage
 // est ITÉRATIF : un graphe d'objets profond ne doit pas faire déborder la pile,
 // ce qui remplacerait un défaut de mémoire par un défaut de robustesse.
+func (h *Heap) localForMark(hd Handle) (Handle, *Object) {
+	if hd == NoHandle {
+		return NoHandle, nil
+	}
+	if hd.IsRoot() {
+		if h.cowMap != nil {
+			if local, ok := h.cowMap[stripRoot(hd)]; ok {
+				return local, h.getLocal(local)
+			}
+		}
+		return NoHandle, nil
+	}
+	return hd, h.getLocal(hd)
+}
+
 func (h *Heap) Collect() {
+	if h.sealedRoot {
+		return
+	}
 	h.Collections++
 
 	for _, o := range h.objs {
@@ -811,13 +1097,12 @@ func (h *Heap) Collect() {
 		if !v.IsObject() {
 			return
 		}
-		hd := v.Handle()
-		o := h.Get(hd)
+		local, o := h.localForMark(v.Handle())
 		if o == nil || o.marked {
 			return
 		}
 		o.marked = true
-		work = append(work, hd)
+		work = append(work, local)
 	}
 
 	for _, r := range h.roots {
@@ -828,6 +1113,12 @@ func (h *Heap) Collect() {
 	}
 	for _, scan := range h.scanners {
 		scan(push)
+	}
+	if h.boundVM != nil {
+		h.boundVM.scanRoots(push)
+	}
+	for _, local := range h.cowMap {
+		push(ObjectValue(local))
 	}
 	if h.objectProto != NoHandle {
 		push(ObjectValue(h.objectProto))
@@ -854,9 +1145,9 @@ func (h *Heap) Collect() {
 			push(v)
 		}
 		if o.proto != NoHandle {
-			if p := h.Get(o.proto); p != nil && !p.marked {
+			if local, p := h.localForMark(o.proto); p != nil && !p.marked {
 				p.marked = true
-				work = append(work, o.proto)
+				work = append(work, local)
 			}
 		}
 		// L'environnement CAPTURÉ par un objet fonction est une racine de plein
@@ -865,9 +1156,9 @@ func (h *Heap) Collect() {
 		// rendait la main — défaut trouvé par le mode stress, avec pour symptôme
 		// « emplacement local hors borne ».
 		if o.env != NoHandle {
-			if e := h.Get(o.env); e != nil && !e.marked {
+			if local, e := h.localForMark(o.env); e != nil && !e.marked {
 				e.marked = true
-				work = append(work, o.env)
+				work = append(work, local)
 			}
 		}
 		if o.homeObject != NoHandle {
@@ -918,7 +1209,9 @@ func (h *Heap) Collect() {
 		for j, k := range o.mapData.Keys {
 			live := false
 			if k.IsObject() {
-				if ko := h.Get(k.Handle()); ko != nil && ko.marked {
+				if k.Handle().IsRoot() {
+					live = true
+				} else if _, ko := h.localForMark(k.Handle()); ko != nil && ko.marked {
 					live = true
 				}
 			}
@@ -945,15 +1238,15 @@ func (h *Heap) Collect() {
 			push(v)
 		}
 		if o.proto != NoHandle {
-			if p := h.Get(o.proto); p != nil && !p.marked {
+			if local, p := h.localForMark(o.proto); p != nil && !p.marked {
 				p.marked = true
-				work = append(work, o.proto)
+				work = append(work, local)
 			}
 		}
 		if o.env != NoHandle {
-			if e := h.Get(o.env); e != nil && !e.marked {
+			if local, e := h.localForMark(o.env); e != nil && !e.marked {
 				e.marked = true
-				work = append(work, o.env)
+				work = append(work, local)
 			}
 		}
 		if o.homeObject != NoHandle {
@@ -989,7 +1282,7 @@ func (h *Heap) Collect() {
 		h.objs[i] = nil
 		// La génération est incrémentée À LA LIBÉRATION : tout handle qui
 		// désignait cet emplacement devient invalide à l'instant même.
-		h.gens[i]++
+		h.gens[i] = nextGen(h.gens[i])
 		h.free = append(h.free, uint32(i))
 		h.Swept++
 	}

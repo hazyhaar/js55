@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package main
 
 import (
@@ -35,7 +36,7 @@ func main() {
 			log.Fatalf("[js55] Failed to initialize isolate: %v", err)
 		}
 
-		res, err := iso.Eval(context.Background(), *evalCode)
+		res, err := iso.EvalContext(context.Background(), *evalCode)
 		if err != nil {
 			log.Fatalf("[js55] Eval error: %v", err)
 		}
@@ -54,7 +55,7 @@ func main() {
 			log.Fatalf("[js55] Failed to initialize isolate: %v", err)
 		}
 
-		res, err := iso.Eval(context.Background(), string(content))
+		res, err := iso.EvalContext(context.Background(), string(content))
 		if err != nil {
 			log.Fatalf("[js55] Execution error: %v", err)
 		}

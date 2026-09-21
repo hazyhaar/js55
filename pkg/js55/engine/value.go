@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine
 
@@ -33,8 +33,14 @@ const (
 	tagNull      uint64 = tagNaN | 0x0002000000000000
 	tagBoolean   uint64 = tagNaN | 0x0003000000000000
 	tagInt32     uint64 = tagNaN | 0x0004000000000000
-	tagPointer   uint64 = tagNaN | 0x8000000000000000
-	ptrMask      uint64 = 0x0000FFFFFFFFFFFF
+	// Sentinelles internes : ni nombres, ni objets. Elles évitent d'allouer un
+	// objet témoin par isolat pour le TDZ, le retour de générateur et l'effacement
+	// d'une liaison globale héritée du royaume racine.
+	tagTDZ             uint64 = tagNaN | 0x0005000000000000
+	tagReturn          uint64 = tagNaN | 0x0006000000000000
+	tagGlobalTombstone uint64 = tagNaN | 0x0007000000000000
+	tagPointer         uint64 = tagNaN | 0x8000000000000000
+	ptrMask            uint64 = 0x0000FFFFFFFFFFFF
 )
 
 var (
@@ -80,9 +86,54 @@ const NoHandle Handle = 0
 
 const handleIndexBits = 32
 
+// rootGenBit marque un handle du royaume racine gelé. La génération locale reste
+// sous ce bit : un indice du tas local ne peut pas être confondu avec un objet
+// partagé. Le bit tient dans les 16 bits de génération, donc dans les 48 bits
+// utiles du mot NaN-tagué.
+const rootGenBit uint16 = 0x8000
+
 // makeHandle assemble un handle depuis un indice et une génération.
 func makeHandle(index uint32, gen uint16) Handle {
 	return Handle(uint64(index) | uint64(gen)<<handleIndexBits)
+}
+
+// IsRoot indique qu'un handle désigne un objet du royaume racine gelé.
+func (h Handle) IsRoot() bool { return h != NoHandle && h.Gen()&rootGenBit != 0 }
+
+// tagRoot pose le bit de royaume. L'opération est idempotente.
+func tagRoot(h Handle) Handle {
+	if h == NoHandle {
+		return NoHandle
+	}
+	return makeHandle(h.Index(), h.Gen()|rootGenBit)
+}
+
+// stripRoot retire le bit de royaume pour indexer le tas racine.
+func stripRoot(h Handle) Handle {
+	if h == NoHandle {
+		return NoHandle
+	}
+	return makeHandle(h.Index(), h.Gen()&^rootGenBit)
+}
+
+func tagRootValue(v Value) Value {
+	if !v.IsObject() {
+		return v
+	}
+	return ObjectValue(tagRoot(v.Handle()))
+}
+
+const maxLocalGen uint16 = rootGenBit - 1 // 0x7FFF
+
+func nextGen(g uint16) uint16 {
+	if g >= maxLocalGen {
+		return maxLocalGen
+	}
+	g++
+	if g == 0 || g >= maxLocalGen {
+		return maxLocalGen
+	}
+	return g
 }
 
 // Index rend l'indice porté par le handle.
@@ -134,6 +185,12 @@ func (v Value) ToInt() int32 {
 }
 
 func (v Value) ToFloat() float64 {
+	if v.IsBool() {
+		if v.ToBool() {
+			return 1
+		}
+		return 0
+	}
 	if v.IsInt() {
 		return float64(v.ToInt())
 	}

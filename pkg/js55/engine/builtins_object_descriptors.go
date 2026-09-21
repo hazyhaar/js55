@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine
 
@@ -425,13 +425,17 @@ func (vm *VM) defineDataFromDesc(target Handle, name *str.String, desc Value) er
 
 	if hasGet || hasSet {
 		if cur, ok := vm.heap.GetOwnProperty(target, name); ok && cur.IsObject() && vm.heap.Get(cur.Handle()) != nil && vm.heap.Get(cur.Handle()).kind == KindAccessor {
-			acc := vm.heap.Get(cur.Handle())
-			if hasGet {
-				acc.elements[0] = getV
+			accH := vm.heap.prepareWrite(cur.Handle())
+			acc := vm.heap.getLocal(accH)
+			if acc != nil {
+				if hasGet {
+					acc.elements[0] = getV
+				}
+				if hasSet {
+					acc.elements[1] = setV
+				}
 			}
-			if hasSet {
-				acc.elements[1] = setV
-			}
+			vm.heap.SetProperty(target, name, ObjectValue(accH))
 		} else {
 			accH := vm.heap.NewObject()
 			if acc := vm.heap.Get(accH); acc != nil {

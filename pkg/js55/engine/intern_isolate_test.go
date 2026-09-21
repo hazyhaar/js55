@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package engine_test
 
 import (
@@ -33,7 +34,7 @@ func TestInternRealIsolateQuotaRejectThenEvalRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err = iso.Eval(ctx, `var preserved = {answer: 7}; preserved.answer`); err != nil {
+	if _, err = iso.EvalContext(ctx, `var preserved = {answer: 7}; preserved.answer`); err != nil {
 		t.Fatal(err)
 	}
 	before, count := iso.AllocatedMemory(), iso.Heap().Intern().Len()
@@ -56,7 +57,7 @@ func TestInternRealIsolateQuotaRejectThenEvalRecovery(t *testing.T) {
 	if iso.AllocatedMemory() != before || iso.Heap().Intern().Len() != count {
 		t.Fatal("rejection altered quota or table")
 	}
-	value, err := iso.Eval(ctx, `preserved.answer = preserved.answer + 2; preserved.answer`)
+	value, err := iso.EvalContext(ctx, `preserved.answer = preserved.answer + 2; preserved.answer`)
 	if err != nil || value.ToInt() != 9 {
 		t.Fatalf("real property mutation/eval did not resume: %v %v", value, err)
 	}

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine
 
@@ -8,8 +8,17 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	jsreMaxInputLen = 1 << 20
+
+	jsreGasNode      int64 = 1
+	jsreGasBacktrack int64 = 2
+)
+
 type regexpFinder interface {
 	FindStringSubmatchIndex(s string) []int
+	FindStringSubmatchIndexWithGas(s string, gas *int64) ([]int, bool)
+	FindStringSubmatchIndexInterruptible(s string, gas *int64, isInterrupted func() bool) ([]int, bool)
 	SubexpNames() []string
 }
 
@@ -25,6 +34,32 @@ func (f re2Finder) FindStringSubmatchIndex(s string) []int {
 		return nil
 	}
 	return f.re.FindStringSubmatchIndex(s)
+}
+
+func (f re2Finder) FindStringSubmatchIndexWithGas(s string, gas *int64) ([]int, bool) {
+	if len(s) > jsreMaxInputLen {
+		return nil, false
+	}
+	if gas != nil {
+		if *gas <= 0 {
+			return nil, false
+		}
+		*gas -= int64(len(s))
+		if *gas <= 0 {
+			return nil, false
+		}
+	}
+	return f.FindStringSubmatchIndex(s), true
+}
+
+// FindStringSubmatchIndexInterruptible honore l'annulation de l'isolat avant de
+// déléguer au moteur RE2 ; la chaîne qui dépasse le plafond admis est refusée
+// plutôt que débitée au plafond.
+func (f re2Finder) FindStringSubmatchIndexInterruptible(s string, gas *int64, isInterrupted func() bool) ([]int, bool) {
+	if isInterrupted != nil && isInterrupted() {
+		return nil, false
+	}
+	return f.FindStringSubmatchIndexWithGas(s, gas)
 }
 
 func (f re2Finder) SubexpNames() []string {
@@ -708,20 +743,101 @@ func unicodeClass(kind byte) *jsreCharClass {
 	return cls
 }
 
+// jsreRun porte l'état d'exécution partagé par la récursion du moteur : le
+// quota de gas de l'isolat, le drapeau d'abandon terminal et le contrôle
+// périodique d'annulation. Le drapeau aborted distingue un échec ordinaire
+// (aucune correspondance à cette position) d'une rupture de quota, distinction
+// que l'unique booléen de retour ne peut exprimer.
+type jsreRun struct {
+	gas       *int64
+	aborted   bool
+	interrupt func() bool
+	steps     uint
+}
+
+// enter franchit le seuil d'un nœud : contrôle périodique d'annulation puis
+// débit d'un pas. Le passage au nœud suivant n'est autorisé que tant que le
+// drapeau d'abandon n'est pas posé.
+func (r *jsreRun) enter() bool {
+	if r == nil || r.aborted {
+		return false
+	}
+	r.steps++
+	if r.interrupt != nil && r.steps&0xff == 0 && r.interrupt() {
+		r.aborted = true
+		return false
+	}
+	return r.charge(jsreGasNode)
+}
+
+// charge débite n unités de gas. Toute insuffisance pose le drapeau d'abandon
+// terminal et met le compteur à zéro, de sorte qu'aucun appelant ne puisse
+// confondre une rupture de quota avec une fin normale sans correspondance.
+func (r *jsreRun) charge(n int64) bool {
+	if r.aborted {
+		return false
+	}
+	if r.gas == nil {
+		return true
+	}
+	if *r.gas <= n {
+		*r.gas = 0
+		r.aborted = true
+		return false
+	}
+	*r.gas -= n
+	return true
+}
+
 func (p *jsreProg) FindStringSubmatchIndex(s string) []int {
 	gas := int64(8_000_000)
+	loc, _ := p.findSubmatchIndex(s, &gas, nil)
+	return loc
+}
+
+// FindStringSubmatchIndexWithGas exécute la recherche en décomptant le quota
+// fourni. Le booléen vaut false dès que le gas est épuisé : l'appelant peut
+// alors interrompre l'isolat au lieu de relancer une recherche sur la position
+// suivante.
+func (p *jsreProg) FindStringSubmatchIndexWithGas(s string, gas *int64) ([]int, bool) {
+	return p.findSubmatchIndex(s, gas, nil)
+}
+
+// FindStringSubmatchIndexInterruptible raccorde l'annulation externe de
+// l'isolat au moteur : le rappel isInterrupted est consulté périodiquement
+// pendant la marche, ce qui permet d'abandonner une recherche coûteuse avant
+// l'épuisement complet du quota.
+func (p *jsreProg) FindStringSubmatchIndexInterruptible(s string, gas *int64, isInterrupted func() bool) ([]int, bool) {
+	return p.findSubmatchIndex(s, gas, isInterrupted)
+}
+
+func (p *jsreProg) findSubmatchIndex(s string, gas *int64, isInterrupted func() bool) ([]int, bool) {
+	if isInterrupted != nil && isInterrupted() {
+		return nil, false
+	}
+	if len(s) > jsreMaxInputLen {
+		return nil, false
+	}
+	if gas == nil {
+		g := int64(8_000_000)
+		gas = &g
+	}
 	caps := make([]int, (p.ncap+1)*2)
+	run := &jsreRun{gas: gas, interrupt: isInterrupted}
 	for i := 0; i <= len(s); {
 		for j := range caps {
 			caps[j] = -1
 		}
-		ok := p.exec(p.root, s, i, caps, &gas, func(end int) bool {
+		ok := p.exec(p.root, s, i, caps, run, func(end int) bool {
 			caps[0] = i
 			caps[1] = end
 			return true
 		})
 		if ok {
-			return caps
+			return caps, true
+		}
+		if run.aborted {
+			return nil, false
 		}
 		if i == len(s) {
 			break
@@ -732,17 +848,16 @@ func (p *jsreProg) FindStringSubmatchIndex(s string) []int {
 		}
 		i += sz
 	}
-	return nil
+	return nil, true
 }
 
-func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, k func(int) bool) bool {
+func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, run *jsreRun, k func(int) bool) bool {
 	if n == nil {
 		return k(pos)
 	}
-	if *gas <= 0 {
+	if !run.enter() {
 		return false
 	}
-	*gas--
 	switch n.op {
 	case jsreEmpty:
 		return k(pos)
@@ -779,15 +894,23 @@ func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, 
 			if i == len(n.kids) {
 				return k(pos)
 			}
-			return p.exec(n.kids[i], s, pos, caps, gas, func(np int) bool {
+			return p.exec(n.kids[i], s, pos, caps, run, func(np int) bool {
 				return walk(i+1, np)
 			})
 		}
 		return walk(0, pos)
 	case jsreAlt:
-		for _, kid := range n.kids {
-			if p.exec(kid, s, pos, caps, gas, k) {
+		for idx, kid := range n.kids {
+			if idx > 0 {
+				if !run.charge(jsreGasBacktrack) {
+					return false
+				}
+			}
+			if p.exec(kid, s, pos, caps, run, k) {
 				return true
+			}
+			if run.aborted {
+				return false
 			}
 		}
 		return false
@@ -802,10 +925,9 @@ func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, 
 		}
 		var take func(count, pos int) bool
 		take = func(count, pos int) bool {
-			if *gas <= 0 {
+			if !run.charge(jsreGasBacktrack) {
 				return false
 			}
-			*gas--
 			if n.lazy {
 				if count >= n.min && k(pos) {
 					return true
@@ -813,7 +935,7 @@ func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, 
 				if count == max {
 					return false
 				}
-				return p.exec(child, s, pos, caps, gas, func(np int) bool {
+				return p.exec(child, s, pos, caps, run, func(np int) bool {
 					if np == pos && count >= n.min {
 						return false
 					}
@@ -825,7 +947,7 @@ func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, 
 			}
 			matched := false
 			if count < max {
-				matched = p.exec(child, s, pos, caps, gas, func(np int) bool {
+				matched = p.exec(child, s, pos, caps, run, func(np int) bool {
 					if np == pos && count >= n.min {
 						return k(pos)
 					}
@@ -834,6 +956,9 @@ func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, 
 			}
 			if matched {
 				return true
+			}
+			if run.aborted {
+				return false
 			}
 			if count >= n.min {
 				return k(pos)
@@ -848,7 +973,7 @@ func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, 
 		}
 		start := pos
 		inner := n.kids[0]
-		return p.exec(inner, s, pos, caps, gas, func(end int) bool {
+		return p.exec(inner, s, pos, caps, run, func(end int) bool {
 			if n.cap*2+1 < len(caps) {
 				caps[n.cap*2] = start
 				caps[n.cap*2+1] = end
@@ -866,11 +991,14 @@ func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, 
 		if n.behind {
 			found := false
 			for start := 0; start <= pos; {
-				if p.exec(inner, s, start, caps, gas, func(end int) bool {
+				if p.exec(inner, s, start, caps, run, func(end int) bool {
 					return end == pos
 				}) {
 					found = true
 					break
+				}
+				if run.aborted {
+					return false
 				}
 				if start == pos {
 					break
@@ -881,6 +1009,9 @@ func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, 
 				}
 				start += sz
 			}
+			if run.aborted {
+				return false
+			}
 			if n.neg {
 				found = !found
 			}
@@ -889,7 +1020,10 @@ func (p *jsreProg) exec(n *jsreNode, s string, pos int, caps []int, gas *int64, 
 			}
 			return false
 		}
-		found := p.exec(inner, s, pos, caps, gas, func(int) bool { return true })
+		found := p.exec(inner, s, pos, caps, run, func(int) bool { return true })
+		if run.aborted {
+			return false
+		}
 		if n.neg {
 			found = !found
 		}

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package csgfixtures
 
 // DecodeReslice — contrainte C4, idiome retenu. Un seul contrôle de bornes.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 // Package str porte la représentation des chaînes du moteur.
 //
 // Le fait qui commande toute la conception : une chaîne JavaScript est une

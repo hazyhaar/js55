@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 package parser
 
 import (
@@ -377,7 +378,11 @@ func (p *parser) parseMethodTail(start lexer.Position, generator, async bool) *a
 	p.inGenerator, p.inAsync, p.inFunction = generator, async, true
 	defer func() { p.inGenerator, p.inAsync, p.inFunction = savedGen, savedAsync, savedFn }()
 
+	p.skipTypeParams()
 	fn.Params = p.parseParams()
+	if p.typescript {
+		p.skipTypeAnnotation()
+	}
 	fn.Body = p.parseBlock()
 	return fn
 }
@@ -391,12 +396,29 @@ func (p *parser) parseParams() []ast.Expr {
 			start := p.tok.Pos
 			p.advance()
 			p.regexpHere()
-			params = append(params,
-				&ast.RestElement{Base: ast.Base{P: start}, Argument: p.toPattern(p.parseAssign())})
+			rest := &ast.RestElement{Base: ast.Base{P: start}, Argument: p.toPattern(p.parseAssign())}
+			if p.typescript {
+				p.skipTypeAnnotation()
+			}
+			params = append(params, rest)
 			break
 		}
 		p.regexpHere()
-		params = append(params, p.toPattern(p.parseAssign()))
+		param := p.toPattern(p.parseAssign())
+		if p.typescript {
+			p.eat(lexer.Question)
+			p.skipTypeAnnotation()
+			if p.eat(lexer.Assign) {
+				p.regexpHere()
+				defVal := p.parseAssign()
+				param = &ast.AssignPattern{
+					Base:    ast.Base{P: param.Pos()},
+					Target:  param,
+					Default: defVal,
+				}
+			}
+		}
+		params = append(params, param)
 		if !p.eat(lexer.Comma) {
 			break
 		}
@@ -424,12 +446,31 @@ func (p *parser) parseParenOrArrow() ast.Expr {
 			sp := p.tok.Pos
 			p.advance()
 			p.regexpHere()
-			items = append(items, &ast.RestElement{Base: ast.Base{P: sp}, Argument: p.parseAssign()})
+			rest := &ast.RestElement{Base: ast.Base{P: sp}, Argument: p.parseAssign()}
+			if p.typescript {
+				p.skipTypeAnnotation()
+			}
+			items = append(items, rest)
 			sawSpread = true
 			break
 		}
 		p.regexpHere()
-		items = append(items, p.parseAssign())
+		item := p.parseAssign()
+		if p.typescript {
+			// Paramètre optionnel « y?: T » puis annotation « y: T ».
+			p.eat(lexer.Question)
+			p.skipTypeAnnotation()
+			if p.eat(lexer.Assign) {
+				p.regexpHere()
+				defVal := p.parseAssign()
+				item = &ast.AssignPattern{
+					Base:    ast.Base{P: item.Pos()},
+					Target:  p.toPattern(item),
+					Default: defVal,
+				}
+			}
+		}
+		items = append(items, item)
 		if !p.eat(lexer.Comma) {
 			break
 		}
@@ -438,6 +479,20 @@ func (p *parser) parseParenOrArrow() ast.Expr {
 		}
 	}
 	p.expect(lexer.RParen)
+
+	// Type de retour d'une fonction fléchée : « (…): T => … ».
+	if p.typescript && p.is(lexer.Colon) {
+		save := p.lx.Save()
+		tk := p.tok
+		p.advance()
+		p.skipType()
+		if p.is(lexer.Arrow) && !p.tok.NewlineBefore {
+			p.advance()
+			return p.parseArrowBody(items, start, false)
+		}
+		p.lx.Restore(save)
+		p.tok = tk
+	}
 
 	if p.is(lexer.Arrow) && !p.tok.NewlineBefore {
 		p.advance()
@@ -496,7 +551,11 @@ func (p *parser) parseFunctionAt(start lexer.Position, async bool) ast.Expr {
 	p.inGenerator, p.inAsync, p.inFunction = generator, async, true
 	defer func() { p.inGenerator, p.inAsync, p.inFunction = savedGen, savedAsync, savedFn }()
 
+	p.skipTypeParams()
 	fn.Params = p.parseParams()
+	if p.typescript {
+		p.skipTypeAnnotation()
+	}
 	fn.Body = p.parseBlock()
 	return fn
 }
@@ -515,8 +574,15 @@ func (p *parser) parseClass(declaration bool) ast.Expr {
 		cl.Name = &ast.Ident{Base: ast.Base{P: p.tok.Pos}, Name: p.tok.Value}
 		p.advance()
 	}
+	p.skipTypeParams()
 	if p.eatKeyword("extends") {
 		cl.SuperClass = p.parseCallOrMember(true)
+		p.skipTypeParams()
+	}
+	if p.typescript && p.isName() && p.tok.Value == "implements" {
+		for !p.is(lexer.LBrace) && !p.is(lexer.EOF) {
+			p.advance()
+		}
 	}
 
 	p.expect(lexer.LBrace)
@@ -534,6 +600,8 @@ func (p *parser) parseClassMember() *ast.ClassMember {
 	start := p.tok.Pos
 	static := false
 
+	p.skipClassModifiers()
+
 	if p.isName() && p.tok.Value == "static" {
 		save := p.lx.Save()
 		tk := p.tok
@@ -549,6 +617,9 @@ func (p *parser) parseClassMember() *ast.ClassMember {
 			static = true
 		}
 	}
+
+	// Les modificateurs peuvent suivre « static » : « static readonly x ».
+	p.skipClassModifiers()
 
 	async, generator := false, false
 	// Même règle que pour les littéraux objet : le terminateur de ligne
@@ -599,10 +670,38 @@ func (p *parser) parseClassMember() *ast.ClassMember {
 
 	m := &ast.ClassMember{Base: ast.Base{P: start}, Key: key, Kind: "field",
 		Static: static, Computed: computed}
+	if p.typescript {
+		p.eat(lexer.Question) // champ optionnel : x?: T
+		p.eat(lexer.Not)      // assertion d'assignation : x!: T
+		p.skipTypeAnnotation()
+	}
 	if p.eat(lexer.Assign) {
 		p.regexpHere()
 		m.Value = p.parseAssign()
 	}
 	p.semicolon()
 	return m
+}
+
+// skipClassModifiers consomme les modificateurs de visibilité TypeScript qui
+// n'ont aucun effet à l'exécution. Un mot qui précède immédiatement « ( », « = »,
+// « : », « ; » ou « } » est un nom de membre, non un modificateur : il est
+// restitué.
+func (p *parser) skipClassModifiers() {
+	for p.typescript && p.isName() {
+		switch p.tok.Value {
+		case "public", "private", "protected", "readonly", "override":
+		default:
+			return
+		}
+		save := p.lx.Save()
+		tk := p.tok
+		p.advance()
+		if p.is(lexer.LParen) || p.is(lexer.Assign) || p.is(lexer.Colon) ||
+			p.is(lexer.Semicolon) || p.is(lexer.RBrace) {
+			p.lx.Restore(save)
+			p.tok = tk
+			return
+		}
+	}
 }

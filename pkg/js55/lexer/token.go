@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 // Package lexer découpe une source ECMAScript en lexèmes.
 //
 // Contraintes du plan (/devhoros/pkg/js55/PLAN_MOTEUR.md §1) appliquées ici :

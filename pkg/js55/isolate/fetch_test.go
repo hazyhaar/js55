@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package isolate
 
@@ -53,10 +53,10 @@ func TestIsolate_FetchDenyOffList(t *testing.T) {
 			caught = e;
 		});
 	`
-	if _, err := iso.Eval(context.Background(), scriptCatch); err != nil {
+	if _, err := iso.EvalContext(context.Background(), scriptCatch); err != nil {
 		t.Fatalf("Eval deny catch : %v", err)
 	}
-	vCaught, err := iso.Eval(context.Background(), `caught`)
+	vCaught, err := iso.EvalContext(context.Background(), `caught`)
 	if err != nil {
 		t.Fatalf("lecture caught : %v", err)
 	}
@@ -76,10 +76,10 @@ func TestIsolate_FetchDenyOffList(t *testing.T) {
 			rejectedErr = err;
 		});
 	`
-	if _, err := iso.Eval(context.Background(), scriptThenReject); err != nil {
+	if _, err := iso.EvalContext(context.Background(), scriptThenReject); err != nil {
 		t.Fatalf("Eval deny then reject : %v", err)
 	}
-	vRej, err := iso.Eval(context.Background(), `rejectedErr`)
+	vRej, err := iso.EvalContext(context.Background(), `rejectedErr`)
 	if err != nil {
 		t.Fatalf("lecture rejectedErr : %v", err)
 	}
@@ -129,22 +129,22 @@ func TestIsolate_FetchAllowLocal(t *testing.T) {
 			gBody = txt;
 		});
 	`
-	if _, err := iso.Eval(context.Background(), script); err != nil {
+	if _, err := iso.EvalContext(context.Background(), script); err != nil {
 		t.Fatalf("fetch JS : %v", err)
 	}
 	if hits.Load() != 2 {
 		t.Fatalf("hits JS=%d", hits.Load())
 	}
 
-	vOk, err := iso.Eval(context.Background(), `gOk`)
+	vOk, err := iso.EvalContext(context.Background(), `gOk`)
 	if err != nil || vOk != engine.True {
 		t.Fatalf("gOk attendu true, err=%v got=%v", err, vOk)
 	}
-	vStatus, err := iso.Eval(context.Background(), `gStatus`)
+	vStatus, err := iso.EvalContext(context.Background(), `gStatus`)
 	if err != nil || vStatus.ToInt() != 200 {
 		t.Fatalf("gStatus attendu 200, err=%v got=%v", err, vStatus)
 	}
-	vBody, err := iso.Eval(context.Background(), `gBody`)
+	vBody, err := iso.EvalContext(context.Background(), `gBody`)
 	if err != nil {
 		t.Fatalf("lecture gBody : %v", err)
 	}
@@ -191,21 +191,21 @@ func TestIsolate_FetchJSON(t *testing.T) {
 			gActive = obj.active;
 		});
 	`
-	if _, err := iso.Eval(context.Background(), script); err != nil {
+	if _, err := iso.EvalContext(context.Background(), script); err != nil {
 		t.Fatalf("fetch json eval : %v", err)
 	}
 
-	vSvc, _ := iso.Eval(context.Background(), `gService`)
+	vSvc, _ := iso.EvalContext(context.Background(), `gService`)
 	if s := iso.VM().StringOf(vSvc); s == nil || s.GoString() != "js55" {
 		t.Fatalf("gService attendu 'js55', obtenu %v", vSvc)
 	}
 
-	vCode, _ := iso.Eval(context.Background(), `gCode`)
+	vCode, _ := iso.EvalContext(context.Background(), `gCode`)
 	if vCode.ToInt() != 42 {
 		t.Fatalf("gCode attendu 42, obtenu %v", vCode)
 	}
 
-	vAct, _ := iso.Eval(context.Background(), `gActive`)
+	vAct, _ := iso.EvalContext(context.Background(), `gActive`)
 	if vAct != engine.True {
 		t.Fatalf("gActive attendu true, obtenu %v", vAct)
 	}
@@ -235,21 +235,21 @@ func TestIsolate_FetchHTTPErrorStatus(t *testing.T) {
 			gBody = txt;
 		});
 	`
-	if _, err := iso.Eval(context.Background(), script); err != nil {
+	if _, err := iso.EvalContext(context.Background(), script); err != nil {
 		t.Fatalf("fetch 404 eval : %v", err)
 	}
 
-	vOk, _ := iso.Eval(context.Background(), `gOk`)
+	vOk, _ := iso.EvalContext(context.Background(), `gOk`)
 	if vOk != engine.False {
 		t.Fatalf("gOk attendu false pour 404, obtenu %v", vOk)
 	}
 
-	vStatus, _ := iso.Eval(context.Background(), `gStatus`)
+	vStatus, _ := iso.EvalContext(context.Background(), `gStatus`)
 	if vStatus.ToInt() != 404 {
 		t.Fatalf("gStatus attendu 404, obtenu %v", vStatus)
 	}
 
-	vBody, _ := iso.Eval(context.Background(), `gBody`)
+	vBody, _ := iso.EvalContext(context.Background(), `gBody`)
 	if s := iso.VM().StringOf(vBody); s == nil || s.GoString() != "non trouve" {
 		t.Fatalf("gBody attendu 'non trouve', obtenu %v", vBody)
 	}
@@ -289,12 +289,12 @@ func TestIsolate_FetchPool_Parallel_Race(t *testing.T) {
 				});
 			`, srv.URL, id)
 
-			if _, err := iso.Eval(context.Background(), script); err != nil {
+			if _, err := iso.EvalContext(context.Background(), script); err != nil {
 				errs <- fmt.Errorf("isolat %d eval: %w", id, err)
 				return
 			}
 
-			vOut, err := iso.Eval(context.Background(), `out`)
+			vOut, err := iso.EvalContext(context.Background(), `out`)
 			if err != nil {
 				errs <- fmt.Errorf("isolat %d lecture out: %w", id, err)
 				return
@@ -350,11 +350,11 @@ func TestIsolate_FetchPool_Parallel_DenyNoDial(t *testing.T) {
 					rejectedErr = err;
 				});
 			`, srv.URL)
-			if _, err := iso.Eval(context.Background(), script); err != nil {
+			if _, err := iso.EvalContext(context.Background(), script); err != nil {
 				errs <- fmt.Errorf("isolat %d eval: %w", id, err)
 				return
 			}
-			vRej, err := iso.Eval(context.Background(), `rejectedErr`)
+			vRej, err := iso.EvalContext(context.Background(), `rejectedErr`)
 			if err != nil {
 				errs <- fmt.Errorf("isolat %d lecture rejectedErr: %w", id, err)
 				return
@@ -398,11 +398,11 @@ func TestIsolate_FetchJSON_InvalidSyntaxCatch(t *testing.T) {
 			gCaught = err;
 		});
 	`
-	if _, err := iso.Eval(context.Background(), script); err != nil {
+	if _, err := iso.EvalContext(context.Background(), script); err != nil {
 		t.Fatalf("fetch invalid json eval : %v", err)
 	}
 
-	vCaught, _ := iso.Eval(context.Background(), `gCaught`)
+	vCaught, _ := iso.EvalContext(context.Background(), `gCaught`)
 	s := iso.VM().StringOf(vCaught)
 	if s == nil || !strings.Contains(s.GoString(), "SyntaxError") {
 		t.Fatalf("gCaught attendu SyntaxError, obtenu %v (str=%v)", vCaught, s)
@@ -430,16 +430,16 @@ func TestIsolate_FetchHeaders(t *testing.T) {
 			gHeaderCT = res.headers.get("content-type");
 		});
 	`
-	if _, err := iso.Eval(context.Background(), script); err != nil {
+	if _, err := iso.EvalContext(context.Background(), script); err != nil {
 		t.Fatalf("fetch headers eval : %v", err)
 	}
 
-	vCustom, _ := iso.Eval(context.Background(), `gHeaderCustom`)
+	vCustom, _ := iso.EvalContext(context.Background(), `gHeaderCustom`)
 	if s := iso.VM().StringOf(vCustom); s == nil || s.GoString() != "val-42" {
 		t.Fatalf("gHeaderCustom attendu 'val-42', obtenu %v", vCustom)
 	}
 
-	vCT, _ := iso.Eval(context.Background(), `gHeaderCT`)
+	vCT, _ := iso.EvalContext(context.Background(), `gHeaderCT`)
 	if s := iso.VM().StringOf(vCT); s == nil || s.GoString() != "application/json" {
 		t.Fatalf("gHeaderCT attendu 'application/json', obtenu %v", vCT)
 	}
@@ -471,26 +471,26 @@ func TestIsolate_FetchJSON_ComplexStructures(t *testing.T) {
 			gName = data.meta.name;
 		});
 	`
-	if _, err := iso.Eval(context.Background(), script); err != nil {
+	if _, err := iso.EvalContext(context.Background(), script); err != nil {
 		t.Fatalf("fetch json complex eval : %v", err)
 	}
 
-	vFirst, _ := iso.Eval(context.Background(), `gFirst`)
+	vFirst, _ := iso.EvalContext(context.Background(), `gFirst`)
 	if vFirst.ToInt() != 10 {
 		t.Fatalf("gFirst attendu 10, obtenu %v", vFirst)
 	}
 
-	vTotal, _ := iso.Eval(context.Background(), `gTotal`)
+	vTotal, _ := iso.EvalContext(context.Background(), `gTotal`)
 	if vTotal.ToInt() != 3 {
 		t.Fatalf("gTotal attendu 3, obtenu %v", vTotal)
 	}
 
-	vValid, _ := iso.Eval(context.Background(), `gValid`)
+	vValid, _ := iso.EvalContext(context.Background(), `gValid`)
 	if vValid != engine.True {
 		t.Fatalf("gValid attendu true, obtenu %v", vValid)
 	}
 
-	vName, _ := iso.Eval(context.Background(), `gName`)
+	vName, _ := iso.EvalContext(context.Background(), `gName`)
 	if !vName.IsNull() {
 		t.Fatalf("gName attendu null, obtenu %v", vName)
 	}

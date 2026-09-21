@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 //go:build archtime_geometry
 
 package engine
@@ -7,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hazyhaar/c2pkg/c2archtsim/geometry"
+	geometry "github.com/hazyhaar/js55/pkg/c2archtsim/geometry"
 )
 
 func loadThreeVM(t *testing.T) *VM {

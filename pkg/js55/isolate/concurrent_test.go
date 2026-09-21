@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package isolate_test
 
@@ -46,7 +46,7 @@ for (let j = 0; j < 50; j = j + 1) {
 sum;
 `, routineID*100+i)
 
-				val, err := iso.Eval(ctx, script)
+				val, err := iso.EvalContext(ctx, script)
 				if err != nil {
 					errChan <- fmt.Errorf("Goroutine %d eval err: %w", routineID, err)
 					return

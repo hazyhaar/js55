@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BUSL-1.1
 //go:build archtime_geometry
 
 package engine_test
@@ -59,14 +60,14 @@ var geom = new THREE.BufferGeometry();
 geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(%d), 3));
 geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 `, terrainNverts*3, terrainNidx)
-	if _, err := iso.Eval(context.Background(), setup); err != nil {
+	if _, err := iso.EvalContext(context.Background(), setup); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	posVal, err := iso.Eval(context.Background(), `geom.getAttribute("position").array`)
+	posVal, err := iso.EvalContext(context.Background(), `geom.getAttribute("position").array`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	idxVal, err := iso.Eval(context.Background(), `geom.getIndex().array`)
+	idxVal, err := iso.EvalContext(context.Background(), `geom.getIndex().array`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 	t.Run("once", func(t *testing.T) {
 		gas0 := iso.VM().GasLeft
 		t0 := time.Now()
-		res, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+		res, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 		elapsed := time.Since(t0)
 		if err != nil {
 			t.Fatalf("fresh: %v", err)
@@ -111,7 +112,7 @@ geom.setIndex(new THREE.BufferAttribute(new Uint32Array(%d), 1));
 	t.Run("oldnormal", func(t *testing.T) {
 		gas0 := iso.VM().GasLeft
 		t0 := time.Now()
-		res, err := iso.Eval(context.Background(), `geom.computeVertexNormals();`)
+		res, err := iso.EvalContext(context.Background(), `geom.computeVertexNormals();`)
 		elapsed := time.Since(t0)
 		if err != nil {
 			t.Fatalf("oldnormal: %v", err)

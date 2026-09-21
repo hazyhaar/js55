@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine
 
@@ -111,7 +111,7 @@ func (vm *VM) deleteKey(obj Value, name *str.String) bool {
 
 func (vm *VM) deleteGlobal(name *str.String) bool {
 	k := vm.heap.Intern().Intern(name)
-	delete(vm.globals, k)
+	vm.storeGlobal(k, globalTombstone)
 	if vm.globalObj != NoHandle {
 		vm.heap.DeleteProperty(vm.globalObj, k)
 	}

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: BUSL-1.1
 
 package engine_test
 
@@ -32,7 +32,7 @@ let res = o[p];
 res;
 `
 
-	val, err := iso.Eval(ctx, script)
+	val, err := iso.EvalContext(ctx, script)
 	if err != nil {
 		t.Fatalf("Échec évaluation clé Rope: %v", err)
 	}
