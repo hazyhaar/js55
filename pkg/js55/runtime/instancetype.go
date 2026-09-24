@@ -3,8 +3,9 @@
 package runtime
 
 // InstanceType encodes the concrete heap object type of an ECMAScript value.
-// It directly mirrors the V8 engine instance-type hierarchy (src/objects/instance-type.h)
-// to enable branchless type range checks and zero-allocation dynamic dispatch.
+// Types are grouped in contiguous tagged ranges (strings below 0x80, bit 7 set
+// beyond), a common engine design, to enable branchless type range checks and
+// zero-allocation dynamic dispatch.
 type InstanceType uint16
 
 const (

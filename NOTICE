@@ -26,6 +26,10 @@ THIRD_PARTY_NOTICES.md for the full texts.
    first public distribution for each later version. See LICENSE for the full
    terms.
 
+   The parseInt helpers in pkg/js55/engine/c2js_parseint_*_gen.go are part
+   of this component: they are transpiled by sgoiter from C sources written
+   by HazyHaar (c2simd/sources/js55, BUSL-1.1).
+
 2. SIMD and numeric conversion submodules -- Apache-2.0 OR MIT
 
    Paths: pkg/c2d2s/..., pkg/c2strsimd/..., pkg/c2strclass/...,

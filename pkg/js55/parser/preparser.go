@@ -6,7 +6,7 @@ import (
 	"github.com/hazyhaar/js55/pkg/js55/lexer"
 )
 
-// PreParser performs fast, allocation-free syntax validation mirroring V8 PreParser.
+// PreParser performs fast, allocation-free syntax pre-validation before full parsing.
 // It verifies balanced braces/parentheses and determines variable scope escapes.
 type PreParser struct {
 	tokens   []lexer.Token

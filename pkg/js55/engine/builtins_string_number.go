@@ -944,7 +944,7 @@ func BuiltinParseInt(s string, radix int) float64 {
 			radix = 10
 		}
 	}
-	if C2_v8_parseint_radix_ok(radix) == 0 {
+	if C2js_parseint_radix_ok(int32(radix)) == 0 {
 		return math.NaN()
 	}
 	if radix == 16 && len(rest) >= 2 && rest[0] == '0' && (rest[1] == 'x' || rest[1] == 'X') {
@@ -953,7 +953,7 @@ func BuiltinParseInt(s string, radix int) float64 {
 	if len(rest) == 0 {
 		return math.NaN()
 	}
-	z := C2_v8_parseint_skip_zeros(rest, len(rest))
+	z := int(C2js_parseint_skip_zeros(rest, int32(len(rest))))
 	if z == len(rest) {
 		if sign < 0 {
 			return math.Copysign(0, -1)
@@ -964,7 +964,7 @@ func BuiltinParseInt(s string, radix int) float64 {
 	acc := 0.0
 	got := false
 	for i := 0; i < len(rest); i++ {
-		d := C2_v8_parseint_digit(int(rest[i]), radix)
+		d := C2js_parseint_digit(int32(rest[i]), int32(radix))
 		if d < 0 {
 			break
 		}

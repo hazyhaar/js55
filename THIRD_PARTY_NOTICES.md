@@ -293,10 +293,12 @@ SOFTWARE.
 ## 7. V8 JavaScript engine
 
 - **Component:** V8 (https://v8.dev), the JavaScript engine of the Chromium project.
-- **Usage in js55:** revisions of this repository up to commit `f2ab79e`
-  contained development notes (`pkg/js55/plan/node-vm/micro/`, since removed)
-  that quoted short excerpts of V8 C++ source (for example
-  `src/numbers/conversions.cc`, `src/date/date.h`) as porting references.
+- **Usage in js55:** none in the current revision. Earlier revisions contained
+  development notes (`pkg/js55/plan/node-vm/micro/`, removed in `735f80a`)
+  quoting short excerpts of V8 C++ source (for example
+  `src/numbers/conversions.cc`, `src/date/date.h`), and a transpiled helper,
+  `pkg/js55/engine/c2_v8_parseint_is_digit_gen.go`, whose expression came from
+  V8's `isDigit` (replaced by `c2js_parseint_is_digit`, written from scratch).
   The attribution is kept for those revisions.
 - **Copyright:** Copyright 2006-2011, the V8 project authors. All rights reserved.
 - **License:** BSD 3-Clause License, reproduced below.
