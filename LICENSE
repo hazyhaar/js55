@@ -4,13 +4,16 @@ License text copyright (c) 2017 MariaDB Corporation Ab, All Rights Reserved.
 Parameters
 
 Licensor:             HazyHaar
-Licensed Work:        js55
+Licensed Work:        js55 and every later version published by the Licensor.
                       The Licensed Work is (c) 2026 HazyHaar
 Additional Use Grant: Non-commercial use, evaluation, local development,
                       research, internal testing, and personal projects are
                       permitted without charge.
 
-Change Date:          2028-09-21
+Change Date:          2028-09-21 for the version of js55 first published under
+                      this License. For each later version, the fourth
+                      anniversary of the first publicly available distribution
+                      of that version under this License.
 
 Change License:       Apache License, Version 2.0
 

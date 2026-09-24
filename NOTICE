@@ -21,8 +21,10 @@ THIRD_PARTY_NOTICES.md for the full texts.
 
    This is NOT an open-source license at the current date and it is NOT
    Apache-2.0. The Apache License, Version 2.0 applies only as the Change
-   License on or after the Change Date of September 21, 2028. See LICENSE for
-   the full terms.
+   License, for each version on its Change Date: September 21, 2028 for the
+   version first published under the License, and the fourth anniversary of
+   first public distribution for each later version. See LICENSE for the full
+   terms.
 
 2. SIMD and numeric conversion submodules -- Apache-2.0 OR MIT
 
