@@ -5,3 +5,4 @@ out/
 .DS_Store
 /js55
 /js55-ci
+pkg/js55/plan/

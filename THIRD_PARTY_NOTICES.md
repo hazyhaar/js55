@@ -293,9 +293,11 @@ SOFTWARE.
 ## 7. V8 JavaScript engine
 
 - **Component:** V8 (https://v8.dev), the JavaScript engine of the Chromium project.
-- **Usage in js55:** the development notes under `pkg/js55/plan/node-vm/micro/`
-  quote short excerpts of V8 C++ source (for example
+- **Usage in js55:** revisions of this repository up to commit `f2ab79e`
+  contained development notes (`pkg/js55/plan/node-vm/micro/`, since removed)
+  that quoted short excerpts of V8 C++ source (for example
   `src/numbers/conversions.cc`, `src/date/date.h`) as porting references.
+  The attribution is kept for those revisions.
 - **Copyright:** Copyright 2006-2011, the V8 project authors. All rights reserved.
 - **License:** BSD 3-Clause License, reproduced below.
 
